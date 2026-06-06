@@ -41,9 +41,8 @@
     // ==========================================
     //  API CONFIGURATION
     // ==========================================
-    const SUPABASE_URL = 'https://tzhmcojnjnjtdrhkpdph.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR6aG1jb2puam5qdGRyaGtwZHBoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE1MTIzMTYsImV4cCI6MjA4NzA4ODMxNn0.VhcR5YpvUglBbwqvw9FtM9l-s3H1IVFJZFAFMyZPshU';
     const ADMIN_PASSWORD = 'Pastore33!'; // Change this to your preferred password
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
     // --- DOM References ---
     const grid = document.getElementById('wishlistGrid');
@@ -95,99 +94,97 @@
         if (categorySelect.value !== 'clothes') subcategorySelect.value = '';
     });
 
-    // --- API Data Sync (Supabase) ---
-    function getHeaders() {
-        return {
-            'apikey': SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-            'Content-Type': 'application/json'
-        };
-    }
-
+    // --- API Data Sync ---
     async function loadItems() {
         try {
-            const response = await fetch(`${SUPABASE_URL}/rest/v1/wishlist?select=*&order=created_at.desc`, {
-                headers: getHeaders()
-            });
-            if (!response.ok) throw new Error('Failed to load items from Supabase');
+            // Fetch from local Express server if running locally, otherwise fetch from committed static JSON file
+            const url = isLocal ? '/api/items' : 'wishlist.json';
+            const response = await fetch(url);
+            if (!response.ok) throw new Error('Failed to load items');
             const data = await response.json();
             
-            // Map created_at to createdAt for app logic
             return data.map(item => ({
                 ...item,
-                createdAt: item.created_at
+                createdAt: item.createdAt || item.created_at
             }));
         } catch (error) {
-            console.error('Error loading items from Supabase:', error);
-            return [];
+            console.error('Error loading items:', error);
+            // Fallback to localStorage as last resort if fetch fails
+            const localData = localStorage.getItem(STORAGE_KEY);
+            return localData ? JSON.parse(localData) : [];
         }
     }
 
     async function saveItem(item) {
-        const dbItem = { ...item, created_at: item.createdAt || Date.now() };
-        delete dbItem.createdAt;
-
+        if (!isLocal) {
+            showToast('Saving items is only supported when running locally', false);
+            return;
+        }
+        
         try {
-            const response = await fetch(`${SUPABASE_URL}/rest/v1/wishlist`, {
+            const response = await fetch('/api/items', {
                 method: 'POST',
-                headers: getHeaders(),
-                body: JSON.stringify(dbItem)
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(item)
             });
-            if (!response.ok) throw new Error('Failed to save item to Supabase');
+            if (!response.ok) throw new Error('Failed to save item to server');
             showToast('Item saved', false);
         } catch (error) {
-            console.error('Error saving item to Supabase:', error);
+            console.error('Error saving item:', error);
             showToast('Failed to save', false);
             throw error;
         }
     }
 
     async function removeItem(id) {
-        try {
-            // Find for undo functionality before deleting
-            const index = items.findIndex(i => i.id === id);
-            if (index > -1) {
-                lastDeleted = { item: items[index], index };
-            }
+        // Store for undo feature before deleting
+        const index = items.findIndex(i => i.id === id);
+        if (index > -1) {
+            lastDeleted = { item: items[index], index };
+        }
 
-            const response = await fetch(`${SUPABASE_URL}/rest/v1/wishlist?id=eq.${id}`, { 
-                method: 'DELETE',
-                headers: getHeaders()
+        if (!isLocal) {
+            showToast('Deleting items is only supported when running locally', false);
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/items/${id}`, { 
+                method: 'DELETE'
             });
-            if (!response.ok) throw new Error('Failed to delete item from Supabase');
+            if (!response.ok) throw new Error('Failed to delete item from server');
             
             showToast('Item removed', true);
         } catch (error) {
-            console.error('Error removing item from Supabase:', error);
+            console.error('Error removing item:', error);
             showToast('Failed to remove', false);
             throw error;
         }
     }
 
     async function updateItem(id, updates) {
-        const dbUpdates = { ...updates };
-        if (dbUpdates.createdAt) {
-            dbUpdates.created_at = dbUpdates.createdAt;
-            delete dbUpdates.createdAt;
+        if (!isLocal) {
+            showToast('Updating items is only supported when running locally', false);
+            return;
         }
 
         try {
-            const response = await fetch(`${SUPABASE_URL}/rest/v1/wishlist?id=eq.${id}`, {
+            const response = await fetch(`/api/items/${id}`, {
                 method: 'PATCH',
-                headers: getHeaders(),
-                body: JSON.stringify(dbUpdates)
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(updates)
             });
-            if (!response.ok) throw new Error('Failed to update item on Supabase');
+            if (!response.ok) throw new Error('Failed to update item on server');
             showToast('Item updated', false);
         } catch (error) {
-            console.error('Error updating item on Supabase:', error);
+            console.error('Error updating item:', error);
             showToast('Failed to update', false);
             throw error;
         }
-    }
-
-    function subscribeToChanges() {
-        // Not used
     }
 
     // --- Generate unique ID ---
@@ -812,7 +809,7 @@
             userEmailSpan.textContent = currentUser.email;
         } else {
             document.body.classList.remove('is-authenticated');
-            authBtn.style.display = 'block';
+            authBtn.style.display = isLocal ? 'block' : 'none';
             userDisplay.style.display = 'none';
             userEmailSpan.textContent = '';
         }
@@ -924,8 +921,10 @@
         items = await loadItems();
         render();
 
-        if (localStorage.getItem('wishlist_admin_session') === 'true') {
+        if (isLocal && localStorage.getItem('wishlist_admin_session') === 'true') {
             currentUser = { email: 'Admin (Hardcoded)', id: 'admin' };
+            updateAuthUI();
+        } else {
             updateAuthUI();
         }
     }
