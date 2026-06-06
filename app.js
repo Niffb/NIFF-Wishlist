@@ -42,7 +42,7 @@
     //  API CONFIGURATION
     // ==========================================
     const ADMIN_PASSWORD = 'Pastore33!'; // Change this to your preferred password
-    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === '[::1]';
 
     // --- DOM References ---
     const grid = document.getElementById('wishlistGrid');
