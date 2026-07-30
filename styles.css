@@ -1,5 +1,5 @@
 /* ============================================
-   WISHLIST — Black & White Clean
+   NIFF — Clean Minimal Wishlist
    ============================================ */
 
 /* --- Reset & Base --- */
@@ -26,9 +26,8 @@
   --shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.08);
   --radius: 12px;
   --radius-sm: 8px;
-  --font-heading: 'Cormorant Garamond', Georgia, serif;
   --font-body: 'Inter', -apple-system, sans-serif;
-  --transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 html {
@@ -59,21 +58,24 @@ body {
 }
 
 .site-title {
-  font-family: var(--font-heading);
-  font-size: 3.2rem;
-  font-weight: 400;
-  letter-spacing: 0.04em;
+  font-family: var(--font-body);
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
   color: var(--text);
-  line-height: 1.1;
+  line-height: 1;
 }
 
 .site-subtitle {
-  font-family: var(--font-heading);
-  font-style: italic;
-  font-size: 1.1rem;
+  font-family: var(--font-body);
+  font-style: normal;
+  font-size: 0.7rem;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.25em;
   color: var(--text-tertiary);
-  margin-top: 0.3rem;
-  letter-spacing: 0.02em;
+  margin-top: 0.35rem;
 }
 
 /* --- Header Actions --- */
@@ -211,8 +213,9 @@ body {
 }
 
 .empty-text {
-  font-family: var(--font-heading);
-  font-size: 1.5rem;
+  font-family: var(--font-body);
+  font-size: 1.1rem;
+  font-weight: 500;
   color: var(--text-secondary);
   margin-bottom: 0.4rem;
 }
@@ -347,10 +350,12 @@ body {
 
 .subcategory-header {
   grid-column: 1 / -1;
-  font-family: var(--font-heading);
-  font-size: 1.6rem;
-  font-weight: 400;
-  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
   padding: 1.5rem 0 0.5rem;
   border-bottom: 1px solid var(--border);
   margin-bottom: 0.5rem;
@@ -619,9 +624,10 @@ body:not(.is-authenticated) .btn-edit {
 }
 
 .modal-title {
-  font-family: var(--font-heading);
-  font-size: 1.6rem;
-  font-weight: 400;
+  font-family: var(--font-body);
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 .modal-close {
@@ -912,7 +918,7 @@ body:not(.is-authenticated) .btn-edit {
   }
 
   .site-title {
-    font-size: 4rem;
+    font-size: 1.8rem;
   }
 
   .content {
@@ -939,7 +945,7 @@ body:not(.is-authenticated) .btn-edit {
 
 @media (max-width: 400px) {
   .site-title {
-    font-size: 2.4rem;
+    font-size: 1.4rem;
   }
 
   .cat-tab {

@@ -39,11 +39,163 @@
     };
 
     // ==========================================
+    //  AUTO-CATEGORISATION
+    // ==========================================
+
+    // Keyword maps for category detection
+    const CATEGORY_KEYWORDS = {
+        shoes: ['shoe', 'shoes', 'sneaker', 'sneakers', 'trainer', 'trainers', 'boot', 'boots', 'heel', 'heels', 'sandal', 'sandals', 'loafer', 'loafers', 'slipper', 'slippers', 'mule', 'mules', 'clog', 'clogs', 'espadrille', 'footwear', 'pump', 'pumps', 'flat', 'flats', 'oxford', 'derby', 'brogue'],
+        bags: ['bag', 'bags', 'handbag', 'handbags', 'tote', 'backpack', 'rucksack', 'clutch', 'purse', 'crossbody', 'shoulder-bag', 'satchel', 'duffel', 'holdall', 'wallet', 'wallets', 'card-holder', 'cardholder'],
+        jewellery: ['jewellery', 'jewelry', 'necklace', 'bracelet', 'ring', 'rings', 'earring', 'earrings', 'pendant', 'charm', 'bangle', 'anklet', 'brooch', 'cufflink', 'cufflinks', 'chain', 'choker'],
+        cosmetics: ['cosmetic', 'cosmetics', 'makeup', 'make-up', 'lipstick', 'mascara', 'foundation', 'concealer', 'blush', 'bronzer', 'highlighter', 'eyeshadow', 'eyeliner', 'skincare', 'skin-care', 'moisturiser', 'moisturizer', 'serum', 'cleanser', 'toner', 'perfume', 'fragrance', 'cologne', 'beauty', 'nail-polish', 'nail polish'],
+        books: ['book', 'books', 'novel', 'hardback', 'paperback', 'hardcover', 'ebook', 'e-book', 'audiobook', 'manga', 'comic'],
+        stationery: ['stationery', 'stationary', 'notebook', 'planner', 'journal', 'pen', 'pens', 'pencil', 'pencils', 'marker', 'markers', 'washi', 'sticker', 'stickers', 'stamp', 'stamps', 'envelope'],
+        home: ['home', 'homeware', 'homewares', 'furniture', 'candle', 'candles', 'cushion', 'throw', 'blanket', 'rug', 'lamp', 'vase', 'decor', 'decoration', 'kitchenware', 'bedding', 'towel', 'mirror', 'storage', 'organiser', 'organizer', 'mug', 'plant', 'planter'],
+        clothes: ['dress', 'dresses', 'shirt', 'shirts', 'blouse', 'top', 'tops', 'jumper', 'jumpers', 'sweater', 'sweaters', 'hoodie', 'hoodies', 'sweatshirt', 'jacket', 'jackets', 'coat', 'coats', 'blazer', 'trousers', 'pants', 'jeans', 'leggings', 'shorts', 'skirt', 'skirts', 'cardigan', 'knitwear', 'knit', 'bodysuit', 'lingerie', 'bra', 'underwear', 'swimsuit', 'bikini', 'swimwear', 'activewear', 'sportswear', 'tracksuit', 'polo', 't-shirt', 'tshirt', 'tee', 'vest', 'tank', 'crop', 'dungaree', 'dungarees', 'romper', 'jumpsuit', 'playsuit', 'crew', 'pullover', 'parka', 'gilet', 'anorak', 'windbreaker'],
+    };
+
+    // Subcategory keyword detection (for clothes only)
+    const SUBCATEGORY_KEYWORDS = {
+        tops: ['top', 'tops', 'blouse', 'shirt', 'shirts', 'polo', 'cami', 'bodysuit', 'crop-top', 'crop top', 'vest', 'tank'],
+        't-shirts': ['t-shirt', 'tshirt', 'tee', 't shirt', 'graphic tee'],
+        jumpers: ['jumper', 'jumpers', 'sweater', 'sweaters', 'knitwear', 'knit', 'cardigan', 'pullover', 'crew neck', 'crew sweater', 'v-neck sweater'],
+        hoodies: ['hoodie', 'hoodies', 'sweatshirt', 'sweatshirts', 'zip-up', 'zip up', 'tracksuit'],
+        jackets: ['jacket', 'jackets', 'coat', 'coats', 'blazer', 'parka', 'gilet', 'anorak', 'windbreaker', 'bomber', 'denim jacket', 'leather jacket', 'puffer', 'trench', 'overcoat', 'mac'],
+        dresses: ['dress', 'dresses', 'gown', 'maxi dress', 'midi dress', 'mini dress'],
+        skirts: ['skirt', 'skirts', 'mini skirt', 'midi skirt', 'maxi skirt'],
+        trousers: ['trousers', 'pants', 'jeans', 'chinos', 'cargo', 'wide-leg', 'straight-leg', 'leggings', 'joggers', 'dungaree', 'dungarees'],
+        shorts: ['shorts', 'short'],
+        activewear: ['activewear', 'sportswear', 'gym', 'running', 'yoga', 'sports bra', 'legging'],
+        swimwear: ['swimwear', 'swimsuit', 'bikini', 'swimming', 'swim', 'trunks', 'one-piece'],
+        underwear: ['underwear', 'lingerie', 'bra', 'briefs', 'boxers', 'pyjamas', 'pajamas', 'loungewear', 'nightwear', 'sleepwear', 'robe', 'dressing gown', 'socks'],
+        accessories: ['scarf', 'scarves', 'hat', 'hats', 'cap', 'beanie', 'gloves', 'belt', 'belts', 'tie', 'ties', 'sunglasses'],
+    };
+
+    // Fashion-focused domain patterns
+    const FASHION_DOMAINS = ['asos', 'zara', 'hm', 'uniqlo', 'mango', 'boohoo', 'prettylittlething', 'plt', 'missguided', 'topshop', 'next', 'primark', 'shein', 'abercrombie', 'hollister', 'gap', 'pull&bear', 'bershka', 'stradivarius', 'massimo', 'cos', 'arket', 'weekday', 'monki', 'superdry', 'levi', 'nike', 'adidas', 'puma', 'reebok', 'newbalance', 'converse', 'vans', 'northface', 'patagonia', 'gymshark', 'river-island', 'riverisland', 'urbanoutfitters', 'freepeople', 'anthropologie', 'self-portrait', 'reiss', 'whistles', 'allsaints', 'ted-baker', 'tedbaker', 'karen-millen', 'karenmillen', 'oasis', 'warehouse', 'dorothyperkins', 'wallis', 'burton', 'jacquemus', 'reformation', 'nastygal', 'depop', 'vinted', 'grailed'];
+    const SHOE_DOMAINS = ['nike', 'adidas', 'puma', 'reebok', 'newbalance', 'converse', 'vans', 'drmartenss', 'drmartens', 'clarks', 'timberland', 'ugg', 'crocs', 'birkenstock', 'schuh', 'office', 'jdsports', 'footlocker', 'footasylum', 'size'];
+    const BEAUTY_DOMAINS = ['sephora', 'boots', 'superdrug', 'cultbeauty', 'lookfantastic', 'beautybay', 'spacenk', 'theordinary', 'glossier', 'charlotte-tilbury', 'charlottetilbury', 'mac', 'nars', 'fenty', 'rare-beauty', 'rarebeauty', 'benefit', 'clinique', 'estee', 'lancome', 'kiehls', 'lush', 'thebodyshop'];
+    const BOOK_DOMAINS = ['waterstones', 'bookdepository', 'penguin', 'harpercollins', 'panmacmillan', 'blackwells', 'foyles', 'wob', 'abebooks', 'wordery'];
+    const HOME_DOMAINS = ['ikea', 'wayfair', 'dunelm', 'johnlewis', 'next', 'habitat', 'madecom', 'made', 'westelm', 'anthropologie', 'oliverbonas', 'hm-home', 'zarahome', 'tkmaxx', 'homesense'];
+
+    /**
+     * Detect category and subcategory from URL + product metadata.
+     * Returns { category: string, subcategory: string }
+     */
+    function detectCategory(url, title = '', description = '') {
+        const result = { category: '', subcategory: '' };
+        try {
+            const u = new URL(url);
+            const hostname = u.hostname.toLowerCase();
+            const path = u.pathname.toLowerCase();
+            const combined = `${path} ${title} ${description}`.toLowerCase();
+
+            // --- Step 1: Domain-level hints ---
+            const domainHint = getDomainCategoryHint(hostname);
+
+            // --- Step 2: Keyword matching on combined text ---
+            // Score each category by keyword matches
+            const scores = {};
+            for (const [cat, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
+                let score = 0;
+                for (const kw of keywords) {
+                    // Word-boundary-style matching (supports hyphenated keywords)
+                    const regex = new RegExp(`(?:^|[\\s/\\-_.,])${kw.replace(/[-/]/g, '[\\-/]?')}(?:$|[\\s/\\-_.,])`, 'i');
+                    if (regex.test(combined)) {
+                        score += 1;
+                        // Boost score if keyword appears in the title (more reliable signal)
+                        if (title && regex.test(title.toLowerCase())) score += 1;
+                    }
+                }
+                if (score > 0) scores[cat] = score;
+            }
+
+            // Pick highest scoring category
+            let bestCat = '';
+            let bestScore = 0;
+            for (const [cat, score] of Object.entries(scores)) {
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestCat = cat;
+                }
+            }
+
+            // --- Step 3: Combine domain hint with keyword result ---
+            if (bestCat) {
+                result.category = bestCat;
+            } else if (domainHint) {
+                result.category = domainHint;
+            }
+
+            // --- Step 4: Detect subcategory if clothes ---
+            if (result.category === 'clothes') {
+                let bestSub = '';
+                let bestSubScore = 0;
+                for (const [sub, keywords] of Object.entries(SUBCATEGORY_KEYWORDS)) {
+                    let subScore = 0;
+                    for (const kw of keywords) {
+                        const regex = new RegExp(`(?:^|[\\s/\\-_.,])${kw.replace(/[-/]/g, '[\\-/]?')}(?:$|[\\s/\\-_.,])`, 'i');
+                        if (regex.test(combined)) {
+                            subScore += 1;
+                            if (title && regex.test(title.toLowerCase())) subScore += 1;
+                        }
+                    }
+                    if (subScore > bestSubScore) {
+                        bestSubScore = subScore;
+                        bestSub = sub;
+                    }
+                }
+                result.subcategory = bestSub || 'other';
+            }
+
+        } catch (e) {
+            console.warn('Category detection error:', e);
+        }
+        return result;
+    }
+
+    function getDomainCategoryHint(hostname) {
+        for (const d of BEAUTY_DOMAINS) {
+            if (hostname.includes(d)) return 'cosmetics';
+        }
+        for (const d of BOOK_DOMAINS) {
+            if (hostname.includes(d)) return 'books';
+        }
+        for (const d of HOME_DOMAINS) {
+            if (hostname.includes(d)) return 'home';
+        }
+        // Shoe domains overlap with fashion — only hint shoes if URL path also suggests shoes
+        for (const d of SHOE_DOMAINS) {
+            if (hostname.includes(d)) return ''; // Don't assume; let keywords decide
+        }
+        for (const d of FASHION_DOMAINS) {
+            if (hostname.includes(d)) return 'clothes'; // Default fashion hint
+        }
+        // Amazon / general retailers — let keywords decide
+        return '';
+    }
+
+    /**
+     * Apply detected category to form dropdowns and trigger UI updates.
+     */
+    function applyCategoryToForm(detected) {
+        if (detected.category && CATEGORIES.includes(detected.category)) {
+            categorySelect.value = detected.category;
+            // Trigger the change handler to show/hide subcategory
+            categorySelect.dispatchEvent(new Event('change'));
+        }
+        if (detected.category === 'clothes' && detected.subcategory) {
+            subcategorySelect.value = detected.subcategory;
+        }
+    }
+
+
+    // ==========================================
     //  API CONFIGURATION
     // ==========================================
-    const SUPABASE_URL = 'https://tzhmcojnjnjtdrhkpdph.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR6aG1jb2puam5qdGRyaGtwZHBoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE1MTIzMTYsImV4cCI6MjA4NzA4ODMxNn0.VhcR5YpvUglBbwqvw9FtM9l-s3H1IVFJZFAFMyZPshU';
-    const ADMIN_PASSWORD = 'Pastore33!'; // Change this to your preferred password
+    const SUPABASE_URL = 'https://teqefehtuesydtwimwqq.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRlcWVmZWh0dWVzeWR0d2ltd3FxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUzNDY2MTMsImV4cCI6MjEwMDkyMjYxM30.JyAVIxqougf8pTfU3RQg2fMx3xgV7qP4V2FGnymDNW0';
+    const ADMIN_PASSWORD = 'Karamalis1310!'; // Change this to your preferred password
 
     // --- DOM References ---
     const grid = document.getElementById('wishlistGrid');
@@ -217,26 +369,36 @@
     function cleanTitle(title, url) {
         if (!title) return '';
 
-        // Strip common suffixes/prefixes like site names
         let cleaned = title;
+
+        // 0. Strip anything after ? (query params leaking into titles)
+        cleaned = cleaned.split('?')[0];
 
         // 1. Remove separators and what follows them if they look like site names
         const separators = [' | ', ' - ', ' – ', ' — ', ' : '];
         for (const sep of separators) {
             if (cleaned.includes(sep)) {
                 const parts = cleaned.split(sep);
-                const lastPart = parts[parts.length - 1].toLowerCase();
+                const lastPart = parts[parts.length - 1].toLowerCase().trim();
+                const firstPart = parts[0].toLowerCase().trim();
                 // Common generic site words
-                const genericWords = ['store', 'official', 'website', 'online', 'shop', 'amazon', 'etsy', 'ebay', 'asos', 'zara', 'h&m'];
+                const genericWords = ['store', 'official', 'website', 'online', 'shop', 'amazon', 'etsy', 'ebay', 'asos', 'zara', 'h&m', 'abercrombie', 'hollister', 'men\'s', 'women\'s', 'clearance', 'sale', 'new arrivals'];
                 
                 if (genericWords.some(word => lastPart.includes(word)) || 
                     (url && url.toLowerCase().includes(lastPart.replace(/\s/g, '')))) {
                     cleaned = parts.slice(0, -1).join(sep);
                 }
+                // Also strip generic prefixes like "Men's Clearance |"
+                if (genericWords.some(word => firstPart.includes(word)) && parts.length > 2) {
+                    cleaned = parts.slice(1).join(sep);
+                }
             }
         }
 
         cleaned = cleaned.trim();
+
+        // 1b. Strip trailing product IDs (numeric strings like "1005", "617432")
+        cleaned = cleaned.replace(/\s+\d{3,}$/, '').trim();
 
         // 2. If it's a long hyphenated string (slug) or contains path segments
         if (cleaned.includes('/') || (cleaned.includes('-') && !cleaned.includes(' '))) {
@@ -256,6 +418,7 @@
             cleaned = cleaned
                 .toLowerCase()
                 .split(' ')
+                .filter(w => w.length > 0)
                 .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
                 .join(' ')
                 .trim();
@@ -278,14 +441,20 @@
             const pathParts = u.pathname.split('/').filter(Boolean);
             // Find the most descriptive part (longest, non-numeric segment)
             let best = '';
-            for (const part of pathParts) {
+            for (let part of pathParts) {
+                // Strip query params that may have leaked
+                part = part.split('?')[0];
                 // Skip purely numeric parts (IDs)
                 if (/^\d+$/.test(part)) continue;
+                // Skip short numeric-heavy parts (product codes like "617432109")
+                if (/^\d{4,}/.test(part)) continue;
                 // Skip common path segments
-                if (['uk', 'us', 'listing', 'product', 'products', 'item', 'items', 'shop', 'dp', 'p', 'prd'].includes(part.toLowerCase())) continue;
+                if (['uk', 'us', 'en', 'gb', 'eu', 'listing', 'product', 'products', 'item', 'items', 'shop', 'dp', 'p', 'prd', 'category', 'collections', 'c', 'men', 'women', 'mens', 'womens', 'kids', 'sale', 'clearance', 'new'].includes(part.toLowerCase())) continue;
                 if (part.length > best.length) best = part;
             }
             if (best) {
+                // Strip trailing numeric product IDs from slug
+                best = best.replace(/-\d{4,}$/, '');
                 return best
                     .replace(/[-_]+/g, ' ')
                     .replace(/\b\w/g, c => c.toUpperCase())
@@ -311,15 +480,11 @@
 
             // --- AMAZON ---
             if (hostname.includes('amazon.')) {
-                // Extract ASIN
                 const asinMatch = path.match(/(?:dp|gp\/product|exec\/obidos\/asin)\/(B[0-9A-Z]{9})/i);
                 if (asinMatch && asinMatch[1]) {
                     const asin = asinMatch[1];
-                    // High-res image pattern
                     result.image = `https://images-na.ssl-images-amazon.com/images/I/${asin}.jpg`;
                 }
-
-                // Extract name from slug (Amazon often has name before /dp/)
                 const parts = path.split('/');
                 const dpIndex = parts.findIndex(p => p === 'dp' || p === 'gp');
                 if (dpIndex > 0) {
@@ -331,12 +496,8 @@
             }
             // --- ETSY ---
             else if (hostname.includes('etsy.com')) {
-                const listingMatch = path.match(/listing\/(\d+)/);
-                if (listingMatch && listingMatch[1]) {
-                    const listingId = listingMatch[1];
-                    const slugMatch = path.match(/listing\/\d+\/([^/?#]+)/);
-                    if (slugMatch) result.name = slugMatch[1].replace(/-/g, ' ');
-                }
+                const slugMatch = path.match(/listing\/\d+\/([^/?#]+)/);
+                if (slugMatch) result.name = slugMatch[1].replace(/-/g, ' ');
             }
             // --- ASOS ---
             else if (hostname.includes('asos.com')) {
@@ -347,15 +508,40 @@
                     result.name = parseNameFromUrl(url);
                 }
             }
+            // --- ABERCROMBIE / HOLLISTER ---
+            else if (hostname.includes('abercrombie.') || hostname.includes('hollister.')) {
+                // URL pattern: /shop/uk/p/product-name-slug-12345
+                const slugMatch = path.match(/\/p\/([^/?#]+)/);
+                if (slugMatch) {
+                    let slug = slugMatch[1];
+                    // Strip trailing product ID
+                    slug = slug.replace(/-\d{4,}$/, '');
+                    result.name = slug.replace(/-/g, ' ');
+                }
+            }
+            // --- ZARA ---
+            else if (hostname.includes('zara.com')) {
+                const slugMatch = path.match(/\/([^/]+)-p\d+\.html/i);
+                if (slugMatch) result.name = slugMatch[1].replace(/-/g, ' ');
+            }
+            // --- H&M ---
+            else if (hostname.includes('hm.com')) {
+                const slugMatch = path.match(/productpage\.([^.]+)\.html/i) || path.match(/\/([^/]+)\.html/i);
+                if (slugMatch) result.name = slugMatch[1].replace(/-/g, ' ');
+            }
+            // --- Generic: try URL slug ---
+            else {
+                result.name = parseNameFromUrl(url);
+            }
 
             // Clean up name if found
             if (result.name) {
                 result.name = result.name
                     .split(' ')
-                    .map(w => w.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+                    .filter(w => w.length > 0)
+                    .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
                     .join(' ')
                     .trim();
-                // Limit length
                 if (result.name.length > 100) result.name = result.name.substring(0, 97) + '...';
             }
         } catch (e) { }
@@ -373,46 +559,232 @@
         }
     }
 
-    // Try fetching metadata from Microlink
-    async function fetchFromMicrolink(url) {
+    /**
+     * Extract structured product data from HTML string.
+     * Looks for JSON-LD (including priceSpecification), meta tags, and price patterns.
+     */
+    function extractProductDataFromHtml(htmlString, sourceUrl) {
+        const result = {
+            title: '',
+            image: { url: '' },
+            description: '',
+            price: '',
+        };
+
+        try {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(htmlString, 'text/html');
+
+            // Helper to get meta tag content
+            const getMeta = (query) => {
+                const el = doc.querySelector(query);
+                return el ? (el.getAttribute('content') || '').trim() : '';
+            };
+
+            // Recursively find a Product object in JSON-LD data
+            function findProduct(obj) {
+                if (!obj || typeof obj !== 'object') return null;
+                if (obj['@type'] === 'Product') return obj;
+                if (Array.isArray(obj)) {
+                    for (const item of obj) {
+                        const found = findProduct(item);
+                        if (found) return found;
+                    }
+                }
+                if (obj['@graph']) return findProduct(obj['@graph']);
+                // Check nested properties
+                for (const key of Object.keys(obj)) {
+                    if (typeof obj[key] === 'object') {
+                        const found = findProduct(obj[key]);
+                        if (found) return found;
+                    }
+                }
+                return null;
+            }
+
+            // Extract price from an offers object (handles all common formats)
+            function extractPriceFromOffers(offers) {
+                if (!offers) return '';
+
+                const offerList = Array.isArray(offers) ? offers : [offers];
+                for (const offer of offerList) {
+                    let priceVal = '';
+                    let currency = '';
+
+                    // Direct price
+                    if (offer.price !== undefined && offer.price !== '') {
+                        priceVal = String(offer.price);
+                        currency = offer.priceCurrency || '';
+                    }
+                    // lowPrice (aggregate offers)
+                    else if (offer.lowPrice !== undefined) {
+                        priceVal = String(offer.lowPrice);
+                        currency = offer.priceCurrency || '';
+                    }
+
+                    // priceSpecification (Abercrombie, etc.)
+                    if (!priceVal && offer.priceSpecification) {
+                        const specs = Array.isArray(offer.priceSpecification) ? offer.priceSpecification : [offer.priceSpecification];
+                        // Prefer the sale/current price (non-ListPrice)
+                        const saleSpec = specs.find(s => s.priceType !== 'ListPrice' && s.price !== undefined);
+                        const anySpec = specs.find(s => s.price !== undefined);
+                        const spec = saleSpec || anySpec;
+                        if (spec) {
+                            priceVal = String(spec.price);
+                            currency = spec.priceCurrency || currency;
+                        }
+                    }
+
+                    if (priceVal) {
+                        const sym = currency === 'GBP' ? '£' : currency === 'EUR' ? '€' : currency === 'USD' ? '$' : (currency ? currency + ' ' : '£');
+                        return `${sym}${priceVal}`;
+                    }
+                }
+                return '';
+            }
+
+            // --- 1. Extract from JSON-LD (most reliable for modern retail sites) ---
+            const jsonLdScripts = doc.querySelectorAll('script[type="application/ld+json"]');
+            for (const script of jsonLdScripts) {
+                try {
+                    const jsonData = JSON.parse(script.textContent);
+                    const product = findProduct(jsonData);
+
+                    if (product) {
+                        if (product.name && !result.title) result.title = product.name;
+                        if (product.description && !result.description) {
+                            // Strip HTML tags from description
+                            result.description = product.description.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+                        }
+
+                        // Image
+                        const img = product.image;
+                        if (img && !result.image.url) {
+                            if (typeof img === 'string') result.image.url = img;
+                            else if (Array.isArray(img)) result.image.url = typeof img[0] === 'string' ? img[0] : img[0]?.url || '';
+                            else if (img.url) result.image.url = img.url;
+                        }
+
+                        // Price from offers
+                        if (!result.price) {
+                            result.price = extractPriceFromOffers(product.offers);
+                        }
+                    }
+                } catch (e) { /* skip invalid JSON-LD */ }
+            }
+
+            // --- 2. Fill gaps from Open Graph / meta tags ---
+            if (!result.title) {
+                result.title = getMeta('meta[property="og:title"]') ||
+                               getMeta('meta[name="twitter:title"]') ||
+                               doc.title || '';
+            }
+            if (!result.image.url) {
+                result.image.url = getMeta('meta[property="og:image"]') ||
+                                   getMeta('meta[property="og:image:secure_url"]') ||
+                                   getMeta('meta[name="twitter:image"]') ||
+                                   getMeta('meta[name="twitter:image:src"]') || '';
+            }
+            if (!result.description) {
+                result.description = getMeta('meta[property="og:description"]') ||
+                                     getMeta('meta[name="description"]') ||
+                                     getMeta('meta[name="twitter:description"]') || '';
+            }
+
+            // --- 3. Price from meta tags ---
+            if (!result.price) {
+                const metaPrice = getMeta('meta[property="product:price:amount"]') ||
+                                  getMeta('meta[property="og:price:amount"]') ||
+                                  getMeta('meta[name="twitter:data1"]') || '';
+                const metaCurrency = getMeta('meta[property="product:price:currency"]') ||
+                                     getMeta('meta[property="og:price:currency"]') || '';
+                if (metaPrice) {
+                    const sym = metaCurrency === 'GBP' ? '£' : metaCurrency === 'EUR' ? '€' : metaCurrency === 'USD' ? '$' : (metaCurrency ? metaCurrency + ' ' : '£');
+                    result.price = `${sym}${metaPrice}`;
+                }
+            }
+
+            // --- 4. Price from page text (regex fallback) ---
+            if (!result.price) {
+                const searchStr = [result.description, result.title, getMeta('meta[name="description"]')].join(' ');
+                const priceRegex = /(?:£|€|\$)\s?[\d,.]+(?:\.\d{2})?/;
+                const match = searchStr.match(priceRegex);
+                if (match) result.price = match[0];
+            }
+
+        } catch (e) {
+            console.warn('HTML extraction error:', e);
+        }
+
+        return result;
+    }
+
+    // Try fetching product data from multiple sources
+    async function fetchProductData(url) {
+        // --- Source 1: Our own server-side proxy (best — bypasses CORS entirely) ---
+        try {
+            const response = await fetch(`/api/fetch-page?url=${encodeURIComponent(url)}`);
+            if (response.ok) {
+                const json = await response.json();
+                if (json.html && json.html.length > 200) {
+                    const extracted = extractProductDataFromHtml(json.html, url);
+                    if (extracted.title || extracted.price || extracted.image.url) {
+                        console.log('[Scraper] Used server-side proxy — got:', extracted.title, extracted.price);
+                        return { source: 'server-proxy', data: extracted };
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('Server proxy failed:', e);
+        }
+
+        // --- Source 2: Microlink API ---
         try {
             const response = await fetch(
                 `${MICROLINK_API}?url=${encodeURIComponent(url)}&meta=true`
             );
-
             const json = await response.json();
             if (json.status === 'success' && json.data) {
-                return json.data;
+                return { source: 'microlink', data: json.data };
             }
         } catch (e) {
-            console.warn('Microlink fetch failed', e);
+            console.warn('Microlink fetch failed:', e);
         }
-        
-        // Fallback: Try a different proxy if Microlink fails
-        try {
-            const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
-            const response = await fetch(proxyUrl);
-            const json = await response.json();
-            if (json.contents) {
-                const parser = new DOMParser();
-                const doc = parser.parseFromString(json.contents, 'text/html');
-                
-                // Very basic extraction from meta tags
-                const getMeta = (query) => {
-                    const el = doc.querySelector(query);
-                    return el ? el.getAttribute('content') : null;
-                };
 
-                return {
-                    title: getMeta('meta[property="og:title"]') || doc.title,
-                    image: { url: getMeta('meta[property="og:image"]') || getMeta('meta[name="twitter:image"]') },
-                    description: getMeta('meta[property="og:description"]') || getMeta('name="description"'),
-                };
+        // --- Source 3: External CORS proxies (last resort) ---
+        const proxies = [
+            (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+            (u) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
+        ];
+
+        for (const makeProxyUrl of proxies) {
+            try {
+                const proxyUrl = makeProxyUrl(url);
+                const response = await fetch(proxyUrl, { signal: AbortSignal.timeout(8000) });
+                if (!response.ok) continue;
+
+                const contentType = response.headers.get('content-type') || '';
+                const text = await response.text();
+
+                let html = text;
+                if (contentType.includes('application/json')) {
+                    try {
+                        const j = JSON.parse(text);
+                        html = j.contents || j.data || text;
+                    } catch { html = text; }
+                }
+
+                if (html && html.length > 500) {
+                    const extracted = extractProductDataFromHtml(html, url);
+                    if (extracted.title || extracted.price || extracted.image.url) {
+                        return { source: 'proxy', data: extracted };
+                    }
+                }
+            } catch (e) {
+                console.warn('Proxy fetch failed:', e);
             }
-        } catch (e) {
-            console.warn('AllOrigins fallback failed', e);
         }
-        
+
         return null;
     }
 
@@ -444,25 +816,28 @@
         const priceInput = document.getElementById('itemPrice');
 
         try {
-            let data = await fetchFromMicrolink(url);
+            const fetchResult = await fetchProductData(url);
             const domainData = parseDomainSpecifics(url);
+            const data = fetchResult?.data || null;
 
             const isJunk = data && (
-                data.title?.toLowerCase().includes('robot check') ||
-                data.title?.toLowerCase().includes('amazon.com') ||
-                data.title?.toLowerCase() === 'amazon' ||
-                data.title?.toLowerCase().includes('just a moment') ||
-                data.title?.toLowerCase().includes('access denied')
+                (data.title || '').toLowerCase().includes('robot check') ||
+                (data.title || '').toLowerCase() === 'amazon' ||
+                (data.title || '').toLowerCase().includes('just a moment') ||
+                (data.title || '').toLowerCase().includes('access denied') ||
+                (data.title || '').toLowerCase().includes('are you a human')
             );
 
             if (data && !isJunk) {
+                // --- Name: best from fetched title, domain-specific, or URL ---
                 const cleanedTitle = cleanTitle(data.title, url);
-                nameInput.value = cleanedTitle || domainData.name || '';
+                nameInput.value = cleanedTitle || domainData.name || parseNameFromUrl(url) || '';
 
-                let bestImage = '';
+                // --- Image: collect all candidates, pick the best ---
                 const normalizeUrl = (imgUrl) => {
                     if (!imgUrl) return null;
                     if (typeof imgUrl === 'object') imgUrl = imgUrl.url;
+                    if (!imgUrl || typeof imgUrl !== 'string') return null;
                     try { return new URL(imgUrl, url).href; } catch { return imgUrl; }
                 };
 
@@ -471,58 +846,125 @@
                     ...(Array.isArray(data.images) ? data.images : []),
                     domainData.image,
                     data.logo,
-                    getFaviconFallback(url)
-                ].map(normalizeUrl).filter(img => img && img.length > 10 && !img.includes('favicon.ico'));
+                ].map(normalizeUrl).filter(img => 
+                    img && img.length > 10 && 
+                    !img.includes('favicon') && 
+                    !img.includes('logo') &&
+                    !img.includes('/icons/')
+                );
 
-                bestImage = imageCandidates[0] || '';
+                // Add favicon as absolute last resort
+                const bestImage = imageCandidates[0] || getFaviconFallback(url);
                 imageInput.value = bestImage;
 
+                // --- Price: from structured data, fetched data, or regex ---
                 let detectedPrice = '';
-                if (data.price) {
-                    detectedPrice = typeof data.price === 'number' ? `£${data.price}` : data.price;
+                if (data.price && typeof data.price === 'string') {
+                    detectedPrice = data.price;
+                } else if (data.price && typeof data.price === 'number') {
+                    detectedPrice = `£${data.price}`;
                 } else {
+                    // Search description and title for price patterns
                     const searchStr = [data.description, data.title, typeof data.text === 'string' ? data.text : ''].join(' ');
-                    const currencyRegex = /(?:£|€|\$|USD|GBP|EUR)\s?[\d,.]+(?:\.\d{2})?|[\d,.]+(?:\.\d{2})?\s?(?:£|€|\$|USD|GBP|EUR)/i;
+                    const currencyRegex = /(?:£|€|\$)\s?[\d,.]+(?:\.\d{2})?/;
                     const priceMatch = searchStr.match(currencyRegex);
                     if (priceMatch) detectedPrice = priceMatch[0];
                 }
+
+                // --- Price fallback: search engines ---
+                if (!detectedPrice) {
+                    try {
+                        const productName = nameInput.value || domainData.name || '';
+                        const searchRes = await fetch(`/api/search-product?q=${encodeURIComponent(productName)}&url=${encodeURIComponent(url)}`);
+                        if (searchRes.ok) {
+                            const searchData = await searchRes.json();
+                            if (searchData.price) {
+                                detectedPrice = searchData.price;
+                                console.log('[Scraper] Price found via search:', detectedPrice);
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('Search price fallback failed:', e);
+                    }
+                }
+
                 priceInput.value = detectedPrice;
 
-                if (bestImage) {
+                // --- Category ---
+                const detected = detectCategory(url, nameInput.value || data.title || '', data.description || '');
+                applyCategoryToForm(detected);
+
+                // --- Update preview ---
+                if (bestImage && !bestImage.includes('favicon')) {
                     fetchPreviewImg.src = bestImage;
                     fetchPreviewImg.style.display = 'block';
                 } else {
-                    fetchPreviewImg.style.display = 'none';
+                    fetchPreviewImg.src = bestImage;
+                    fetchPreviewImg.style.display = 'block';
                 }
                 fetchPreviewTitle.textContent = nameInput.value || 'Product detected';
-                fetchPreviewDesc.textContent = detectedPrice ? `Price: ${detectedPrice}` : (data.description ? data.description.substring(0, 100) + '...' : 'Details fetched');
+                const categoryLabel = detected.category ? CATEGORY_LABELS[detected.category] || detected.category : '';
+                const subLabel = detected.subcategory && detected.subcategory !== 'other' ? SUBCATEGORY_LABELS[detected.subcategory] || detected.subcategory : '';
+                const catInfo = categoryLabel ? ` • ${categoryLabel}${subLabel ? ' › ' + subLabel : ''}` : '';
+                const priceInfo = detectedPrice ? `Price: ${detectedPrice}` : '';
+                const descInfo = !priceInfo && data.description ? data.description.substring(0, 80) + '...' : '';
+                fetchPreviewDesc.textContent = (priceInfo || descInfo || 'Details fetched') + catInfo;
 
             } else {
+                // --- Fallback: URL-only parsing + Search engine fallback ---
                 const parsedName = domainData.name || parseNameFromUrl(url);
                 nameInput.value = parsedName;
 
                 const fallbackImage = domainData.image || getFaviconFallback(url);
                 imageInput.value = fallbackImage;
 
+                // Price fallback via search engine
+                let detectedPrice = '';
+                try {
+                    const searchRes = await fetch(`/api/search-product?q=${encodeURIComponent(parsedName)}&url=${encodeURIComponent(url)}`);
+                    if (searchRes.ok) {
+                        const searchData = await searchRes.json();
+                        if (searchData.price) {
+                            detectedPrice = searchData.price;
+                            priceInput.value = detectedPrice;
+                            console.log('[Scraper Fallback] Price found via search:', detectedPrice);
+                        }
+                    }
+                } catch (e) {
+                    console.warn('[Scraper Fallback] Price search failed:', e);
+                }
+
+                // Auto-detect category even on fallback
+                const detected = detectCategory(url, parsedName, '');
+                applyCategoryToForm(detected);
+
                 fetchPreviewTitle.textContent = parsedName || 'Manual entry needed';
                 fetchPreviewImg.src = fallbackImage;
                 fetchPreviewImg.style.display = fallbackImage ? 'block' : 'none';
 
-                if (isJunk || !data) {
-                    fetchPreviewDesc.textContent = 'Site blocked auto-fetch. We used the link to guess details.';
-                } else {
-                    fetchPreviewDesc.textContent = 'Could not find all details. Please fill in any missing bits.';
-                }
+                const categoryLabel = detected.category ? CATEGORY_LABELS[detected.category] || detected.category : '';
+                const subLabel = detected.subcategory && detected.subcategory !== 'other' ? SUBCATEGORY_LABELS[detected.subcategory] || detected.subcategory : '';
+                const catInfo = categoryLabel ? ` • ${categoryLabel}${subLabel ? ' › ' + subLabel : ''}` : '';
+                const priceInfo = detectedPrice ? `Price: ${detectedPrice}` : 'Price not auto-detected';
+                fetchPreviewDesc.textContent = `${priceInfo}${catInfo}`;
             }
 
             fetchPreview.classList.add('show');
 
         } catch (err) {
             console.error('Fetch error:', err);
-            const parsedName = parseNameFromUrl(url);
+            // Last resort: try domain parsing
+            const domainData = parseDomainSpecifics(url);
+            const parsedName = domainData.name || parseNameFromUrl(url);
             nameInput.value = parsedName;
+            imageInput.value = domainData.image || getFaviconFallback(url);
+
+            const detected = detectCategory(url, parsedName, '');
+            applyCategoryToForm(detected);
+
             fetchPreviewTitle.textContent = parsedName || 'Fetch failed';
-            fetchPreviewDesc.textContent = 'Please check the link or fill in manually.';
+            const categoryLabel = detected.category ? CATEGORY_LABELS[detected.category] || detected.category : '';
+            fetchPreviewDesc.textContent = 'Please check the link or fill in manually.' + (categoryLabel ? ` • ${categoryLabel}` : '');
             fetchPreview.classList.add('show');
         } finally {
             fetchBtn.classList.remove('loading');
@@ -787,7 +1229,7 @@
             currentUser = { email: 'Admin (Hardcoded)', id: 'admin' };
             localStorage.setItem('wishlist_admin_session', 'true');
             updateAuthUI();
-            authMessage.textContent = 'Welcome back, Liv!';
+            authMessage.textContent = 'Welcome back!';
             authMessage.className = 'auth-message success';
             authMessage.style.display = 'block';
             setTimeout(closeAuthModal, 1500);
