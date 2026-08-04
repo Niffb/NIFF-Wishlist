@@ -30,6 +30,8 @@
   --transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+
+
 html {
   font-size: 16px;
   -webkit-font-smoothing: antialiased;
@@ -500,6 +502,22 @@ body:not(.is-authenticated) .btn-edit {
   display: none !important;
 }
 
+body.is-authenticated .site-header {
+  border-bottom: 2px solid #000;
+}
+
+.admin-badge {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: var(--text);
+  color: var(--bg);
+  padding: 0.2rem 0.55rem;
+  border-radius: 100px;
+}
+
 .auth-modal {
   max-width: 400px;
 }
@@ -952,6 +970,301 @@ body:not(.is-authenticated) .btn-edit {
     font-size: 0.75rem;
     padding: 0.4rem 0.75rem;
   }
+}
 
+/* ============================================
+   QOL Features Styles
+   ============================================ */
 
+/* Wishlist Summary */
+.wishlist-summary {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+  letter-spacing: 0.05em;
+}
+
+/* Theme Toggle Button */
+.btn-theme {
+  background: transparent;
+  border: none;
+  font-size: 1.25rem;
+  cursor: pointer;
+  padding: 0.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all var(--transition);
+}
+.btn-theme:hover {
+  background: var(--border);
+}
+
+/* Filters Bar */
+.filters-bar {
+  padding: 0.75rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.filters-inner {
+  max-width: 1800px;
+  width: 96%;
+  margin: 0 auto;
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.search-wrapper {
+  position: relative;
+  flex: 1;
+  min-width: 200px;
+}
+
+.search-icon {
+  position: absolute;
+  left: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.85rem;
+  opacity: 0.5;
+}
+
+.search-input {
+  width: 100%;
+  padding: 0.5rem 1rem 0.5rem 2.25rem;
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  transition: all var(--transition);
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: var(--text);
+}
+
+.price-filter-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Badges (Priority, Reserved) */
+.item-badges {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  z-index: 2;
+}
+
+.badge-priority {
+  background: #FFD700;
+  color: #000;
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 0.2rem 0.5rem;
+  border-radius: 100px;
+  box-shadow: var(--shadow-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.reservation-badge {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  background: var(--text);
+  color: var(--bg);
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 0.2rem 0.5rem;
+  border-radius: 100px;
+  z-index: 2;
+  box-shadow: var(--shadow-sm);
+}
+
+/* Item Action Buttons */
+.btn-claim {
+  font-family: var(--font-body);
+  font-size: 0.68rem;
+  font-weight: 600;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  padding: 0.3rem 0.65rem;
+  border-radius: 100px;
+  cursor: pointer;
+  margin-left: auto;
+  transition: all var(--transition);
+  white-space: nowrap;
+}
+.btn-claim:hover {
+  background: var(--text);
+  color: var(--bg);
+  border-color: var(--text);
+}
+
+.btn-claimed {
+  font-family: var(--font-body);
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: #fef2f2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+  padding: 0.3rem 0.65rem;
+  border-radius: 100px;
+  margin-left: auto;
+  white-space: nowrap;
+  display: inline-block;
+}
+
+.btn-copy {
+  margin-right: auto; /* push to left */
+}
+
+.item-actions {
+  display: flex;
+  padding: 0.5rem 1rem;
+  border-top: 1px solid var(--border);
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Checkbox Group */
+.checkbox-group {
+  display: flex;
+  align-items: center;
+  margin-top: -0.5rem;
+  margin-bottom: 0.5rem;
+}
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text);
+}
+.checkbox-label input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  cursor: pointer;
+}
+
+/* ============================================
+   CLAIM POPUP — Full-screen blocking overlay
+   ============================================ */
+.claim-popup-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 500;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  padding: 1.5rem;
+}
+.claim-popup-overlay.open {
+  opacity: 1;
+}
+
+.claim-popup {
+  background: #FFFFFF;
+  border-radius: 20px;
+  padding: 2.5rem 2rem 2rem;
+  max-width: 400px;
+  width: 100%;
+  text-align: center;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.2);
+  transform: scale(0.9) translateY(20px);
+  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.claim-popup-overlay.open .claim-popup {
+  transform: scale(1) translateY(0);
+}
+
+.claim-popup-icon {
+  font-size: 3rem;
+  margin-bottom: 0.75rem;
+  line-height: 1;
+}
+
+.claim-popup-title {
+  font-family: var(--font-body);
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #111;
+  margin-bottom: 0.75rem;
+  letter-spacing: -0.01em;
+}
+
+.claim-popup-text {
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  color: #333;
+  line-height: 1.6;
+  margin-bottom: 0.5rem;
+}
+.claim-popup-text strong {
+  color: #000;
+}
+.claim-popup-text em {
+  font-style: italic;
+  color: #555;
+}
+
+.claim-popup-hint {
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  color: #999;
+  margin-bottom: 1.5rem;
+}
+
+.claim-popup-close {
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  background: #111;
+  color: #fff;
+  border: none;
+  padding: 0.7rem 2rem;
+  border-radius: 100px;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.claim-popup-close:hover {
+  background: #333;
+  transform: scale(1.03);
+}
+
+/* Success variant */
+.claim-popup-success .claim-popup-title {
+  color: #16a34a;
+}
+.claim-popup-success .claim-popup-close {
+  background: #16a34a;
+}
+.claim-popup-success .claim-popup-close:hover {
+  background: #15803d;
 }
