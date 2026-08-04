@@ -24,6 +24,9 @@
     <div class="header-inner">
       <h1 class="site-title">NIFF</h1>
       <p class="site-subtitle">wishlist</p>
+      <div class="wishlist-summary" id="wishlistSummary" style="display: none;">
+        <span id="summaryText">0 items • £0.00</span>
+      </div>
     </div>
     <div class="header-actions">
       <button id="authBtn" class="btn-auth">Login</button>
@@ -60,13 +63,31 @@
     </div>
   </nav>
 
+  <!-- Filters Bar -->
+  <div class="filters-bar">
+    <div class="filters-inner">
+      <div class="search-wrapper">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="searchInput" class="search-input" placeholder="Search wishlist...">
+      </div>
+      <div class="price-filter-wrapper">
+        <label for="priceFilterSelect" class="sort-label">Price:</label>
+        <select id="priceFilterSelect" class="sort-select">
+          <option value="all">Any Price</option>
+          <option value="under25">Under £25</option>
+          <option value="25to50">£25 - £50</option>
+          <option value="50plus">£50+</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
   <!-- Main Content -->
   <main class="content">
     <!-- Empty State -->
     <div class="empty-state" id="emptyState">
       <div class="empty-icon">✦</div>
-      <p class="empty-text">No items yet</p>
-      <p class="empty-hint">Tap the + button to add your first wish</p>
+      <p class="empty-hint" id="emptyHint">No items available in this view</p>
     </div>
 
     <!-- Wishlist Grid -->
@@ -77,6 +98,39 @@
   <button class="fab" id="addBtn" aria-label="Add item">
     <span class="fab-icon">+</span>
   </button>
+
+  <!-- Item Template -->
+  <template id="itemTemplate">
+    <article class="wishlist-item">
+      <a href="" target="_blank" rel="noopener noreferrer" class="item-link">
+        <div class="item-image-wrapper">
+          <img class="item-image" src="" alt="" loading="lazy">
+          <div class="item-badges">
+             <!-- Badges injected here dynamically -->
+          </div>
+        </div>
+        <div class="item-content">
+          <div class="item-header">
+            <h3 class="item-name"></h3>
+            <span class="item-category"></span>
+          </div>
+          <p class="item-subcategory"></p>
+          <p class="item-note"></p>
+          <div class="item-footer">
+            <span class="item-price"></span>
+            <div class="item-domain-wrapper">
+              <img class="item-favicon" src="" alt="" style="display: none;" width="16" height="16">
+              <span class="item-domain"></span>
+            </div>
+          </div>
+        </div>
+      </a>
+      <div class="item-actions">
+        <!-- Injected dynamically: copy, edit, delete, reserve -->
+      </div>
+      <div class="reservation-badge" style="display: none;"></div>
+    </article>
+  </template>
 
   <!-- Modal Overlay -->
   <div class="modal-overlay" id="modalOverlay">
@@ -115,6 +169,12 @@
         <div class="form-group">
           <label for="itemNote">Note <span class="optional">(optional)</span></label>
           <input type="text" id="itemNote" placeholder="e.g. Size M, in cream">
+        </div>
+        <div class="form-group checkbox-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="itemPriority">
+            <span class="checkbox-text">⭐ Mark as High Priority (Must Have)</span>
+          </label>
         </div>
         <div class="form-group">
           <label for="itemCategory">Category</label>

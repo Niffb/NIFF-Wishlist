@@ -213,6 +213,13 @@
     const fetchPreviewImg = document.getElementById('fetchPreviewImg');
     const fetchPreviewTitle = document.getElementById('fetchPreviewTitle');
     const fetchPreviewDesc = document.getElementById('fetchPreviewDesc');
+    
+    // QOL Features DOM
+    const wishlistSummary = document.getElementById('wishlistSummary');
+    const summaryText = document.getElementById('summaryText');
+    const searchInput = document.getElementById('searchInput');
+    const priceFilterSelect = document.getElementById('priceFilterSelect');
+    const itemPriorityCheckbox = document.getElementById('itemPriority');
 
     // Auth DOM
     const authBtn = document.getElementById('authBtn');
@@ -233,6 +240,8 @@
     let lastDeleted = null;
     let toastTimeout = null;
     let currentUser = null;
+    let currentSearch = '';
+    let currentPriceFilter = 'all';
     let editingItemId = null;
 
     const sortSelect = document.getElementById('sortSelect');
@@ -843,8 +852,8 @@
 
                 const imageCandidates = [
                     data.image,
-                    ...(Array.isArray(data.images) ? data.images : []),
                     domainData.image,
+                    ...(Array.isArray(data.images) ? data.images : []),
                     data.logo,
                 ].map(normalizeUrl).filter(img => 
                     img && img.length > 10 && 
@@ -853,8 +862,30 @@
                     !img.includes('/icons/')
                 );
 
-                // Add favicon as absolute last resort
-                const bestImage = imageCandidates[0] || getFaviconFallback(url);
+                let bestImage = imageCandidates[0] || '';
+
+                // --- Image Search Fallback: if no good image found, search for one ---
+                if (!bestImage || bestImage.includes('favicon')) {
+                    try {
+                        const productName = nameInput.value || cleanedTitle || domainData.name || '';
+                        const imgSearchRes = await fetch(`/api/search-image?q=${encodeURIComponent(productName)}&url=${encodeURIComponent(url)}`);
+                        if (imgSearchRes.ok) {
+                            const imgData = await imgSearchRes.json();
+                            if (imgData.best) {
+                                bestImage = imgData.best;
+                                console.log('[Scraper] Image found via search:', bestImage.substring(0, 80));
+                            } else if (imgData.screenshot) {
+                                bestImage = imgData.screenshot;
+                                console.log('[Scraper] Using page screenshot as image');
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('Image search fallback failed:', e);
+                    }
+                }
+
+                // Absolute last resort
+                if (!bestImage) bestImage = getFaviconFallback(url);
                 imageInput.value = bestImage;
 
                 // --- Price: from structured data, fetched data, or regex ---
@@ -915,7 +946,26 @@
                 const parsedName = domainData.name || parseNameFromUrl(url);
                 nameInput.value = parsedName;
 
-                const fallbackImage = domainData.image || getFaviconFallback(url);
+                // Try image search first, then screenshot, then favicon
+                let fallbackImage = domainData.image || '';
+                if (!fallbackImage) {
+                    try {
+                        const imgSearchRes = await fetch(`/api/search-image?q=${encodeURIComponent(parsedName)}&url=${encodeURIComponent(url)}`);
+                        if (imgSearchRes.ok) {
+                            const imgData = await imgSearchRes.json();
+                            if (imgData.best) {
+                                fallbackImage = imgData.best;
+                                console.log('[Scraper Fallback] Image found via search:', fallbackImage.substring(0, 80));
+                            } else if (imgData.screenshot) {
+                                fallbackImage = imgData.screenshot;
+                                console.log('[Scraper Fallback] Using page screenshot');
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('[Scraper Fallback] Image search failed:', e);
+                    }
+                }
+                if (!fallbackImage) fallbackImage = getFaviconFallback(url);
                 imageInput.value = fallbackImage;
 
                 // Price fallback via search engine
@@ -983,6 +1033,25 @@
         return isNaN(val) ? Infinity : val;
     }
 
+    function parsePriceForTotal(priceStr) {
+        if (!priceStr) return 0;
+        const cleaned = priceStr.replace(/[^\d.]/g, '');
+        const val = parseFloat(cleaned);
+        return isNaN(val) ? 0 : val;
+    }
+
+    function updateSummary(filtered) {
+        let total = 0;
+        filtered.forEach(item => {
+            total += parsePriceForTotal(item.price);
+        });
+        const currencyMatch = (filtered.find(i => i.price) || {}).price?.match(/^[^\d]/) || ['£'];
+        const currency = currencyMatch[0];
+        
+        summaryText.textContent = `${filtered.length} items • ${currency}${total.toFixed(2)}`;
+        wishlistSummary.style.display = 'block';
+    }
+
     function getPlaceholderIcon(category) {
         const icons = {
             clothes: '👕',
@@ -999,26 +1068,63 @@
     }
 
     function render() {
-        let filtered =
-            activeCategory === 'all'
-                ? [...items]
-                : items.filter((item) => item.category === activeCategory);
+        let filtered = items.filter(item => {
+            // Category filter
+            if (activeCategory !== 'all' && item.category !== activeCategory) return false;
+            
+            // Search filter
+            if (currentSearch) {
+                const searchLower = currentSearch.toLowerCase();
+                const nameMatch = (item.name || '').toLowerCase().includes(searchLower);
+                const urlMatch = (item.url || '').toLowerCase().includes(searchLower);
+                const noteMatch = (item.note || '').toLowerCase().includes(searchLower);
+                if (!nameMatch && !urlMatch && !noteMatch) return false;
+            }
+            
+            // Price filter
+            if (currentPriceFilter !== 'all') {
+                const priceNum = parsePrice(item.price);
+                if (currentPriceFilter === 'under25' && priceNum >= 25) return false;
+                if (currentPriceFilter === '25to50' && (priceNum < 25 || priceNum > 50)) return false;
+                if (currentPriceFilter === '50plus' && priceNum <= 50) return false;
+            }
+            
+            return true;
+        });
+
+        // Calculate and update summary
+        updateSummary(filtered);
 
         switch (activeSort) {
             case 'newest':
-                filtered.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+                filtered.sort((a, b) => {
+                    if (a.is_priority !== b.is_priority) return a.is_priority ? -1 : 1;
+                    return (b.createdAt || 0) - (a.createdAt || 0);
+                });
                 break;
             case 'oldest':
-                filtered.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+                filtered.sort((a, b) => {
+                    if (a.is_priority !== b.is_priority) return a.is_priority ? -1 : 1;
+                    return (a.createdAt || 0) - (b.createdAt || 0);
+                });
                 break;
             case 'price-low':
-                filtered.sort((a, b) => parsePrice(a.price) - parsePrice(b.price));
+                filtered.sort((a, b) => {
+                    if (a.is_priority !== b.is_priority) return a.is_priority ? -1 : 1;
+                    return parsePrice(a.price) - parsePrice(b.price);
+                });
                 break;
             case 'price-high':
-                filtered.sort((a, b) => parsePrice(b.price) - parsePrice(a.price));
+                filtered.sort((a, b) => {
+                    if (a.is_priority !== b.is_priority) return a.is_priority ? -1 : 1;
+                    return parsePrice(b.price) - parsePrice(a.price);
+                });
                 break;
             case 'name':
-                filtered.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+                filtered.sort((a, b) => {
+                    if (a.is_priority !== b.is_priority) return a.is_priority ? -1 : 1;
+                    return (a.name || '').localeCompare(b.name || '');
+                });
                 break;
         }
 
@@ -1028,10 +1134,14 @@
             emptyState.style.display = 'block';
             grid.style.display = 'none';
             const emptyText = emptyState.querySelector('.empty-text');
+            const emptyHint = document.getElementById('emptyHint');
             if (activeCategory === 'all') {
                 emptyText.textContent = 'No items yet';
             } else {
                 emptyText.textContent = `No ${CATEGORY_LABELS[activeCategory] || activeCategory} items`;
+            }
+            if (emptyHint) {
+                emptyHint.textContent = currentUser ? 'Tap the + button to add an item' : 'Check back later for new items!';
             }
         } else {
             emptyState.style.display = 'none';
@@ -1105,9 +1215,37 @@
             ? `<span class="wish-card-subcategory">${SUBCATEGORY_LABELS[item.subcategory]}</span>`
             : '';
 
+        // Badges: admin never sees reservation info — only priority
+        const badgesHtml = `
+          <div class="item-badges">
+            ${item.is_priority ? '<span class="badge-priority">⭐ Priority</span>' : ''}
+          </div>
+        `;
+
+        // Action buttons differ by role
+        let actionsHtml = '';
+        if (currentUser) {
+            // Admin: edit + delete only, no reservation info at all
+            actionsHtml = `
+              <button class="btn-copy btn-icon" data-url="${escapeHtml(item.url)}" aria-label="Copy Link" title="Copy Link" style="font-size: 14px;">🔗</button>
+              <button class="btn-edit" data-id="${item.id}" aria-label="Edit item">✎</button>
+              <button class="btn-delete" data-id="${item.id}" aria-label="Delete item">&times;</button>
+            `;
+        } else {
+            // Guest: copy link + Claim / Claimed button
+            actionsHtml = `
+              <button class="btn-copy btn-icon" data-url="${escapeHtml(item.url)}" aria-label="Copy Link" title="Copy Link" style="font-size: 14px;">🔗</button>
+              ${item.reserved_by
+                ? `<span class="btn-claimed">Claimed</span>`
+                : `<button class="btn-claim" data-id="${item.id}">Claim</button>`
+              }
+            `;
+        }
+
         card.innerHTML = `
           <div class="wish-card-image-container">
             ${imageHtml}
+            ${badgesHtml}
             <div class="wish-card-placeholder">${placeholderIcon}</div>
           </div>
           <div class="wish-card-body">
@@ -1121,24 +1259,117 @@
                 ${displayUrl(item.url)}
               </a>
             </div>
-            <div class="wish-card-actions">
-              <button class="btn-edit" data-id="${item.id}" aria-label="Edit item">✎</button>
-              <button class="btn-delete" data-id="${item.id}" aria-label="Delete item">&times;</button>
+            <div class="item-actions">
+              ${actionsHtml}
             </div>
           </div>
         `;
 
-        card.addEventListener('click', (e) => {
+        card.addEventListener('click', async (e) => {
+            // --- Copy button ---
+            if (e.target.closest('.btn-copy')) {
+                const url = e.target.closest('.btn-copy').dataset.url;
+                try {
+                    await navigator.clipboard.writeText(url);
+                    showToast('Link copied!', true);
+                } catch (err) {
+                    console.error('Failed to copy', err);
+                }
+                return;
+            }
+            
+            // --- "I'm getting this" claim button ---
+            if (e.target.closest('.btn-claim')) {
+                const name = prompt("Enter your name to claim this gift:");
+                if (name && name.trim()) {
+                    try {
+                        const id = e.target.closest('.btn-claim').dataset.id;
+                        await updateItem(id, { reserved_by: name.trim() });
+                        items = await loadItems();
+                        render();
+                        showClaimConfirmation(item.name, name.trim());
+                    } catch(err) {
+                        alert("Failed to claim item.");
+                    }
+                }
+                return;
+            }
+            
+            // --- Edit / Delete / URL link clicks ---
             if (
                 e.target.closest('.btn-delete') ||
                 e.target.closest('.btn-edit') ||
                 e.target.closest('.wish-card-url')
             )
                 return;
+
+            // --- CLAIMED ITEM INTERCEPT (guest only) ---
+            // If item is claimed and user is NOT admin, block redirect & show popup
+            if (item.reserved_by && !currentUser) {
+                e.preventDefault();
+                e.stopPropagation();
+                showClaimedPopup(item.name, item.reserved_by);
+                return;
+            }
+
             window.open(item.url, '_blank', 'noopener,noreferrer');
         });
 
         return card;
+    }
+
+    // --- Claimed Item Popup (blocks redirect) ---
+    function showClaimedPopup(itemName, claimedBy) {
+        const overlay = document.createElement('div');
+        overlay.className = 'claim-popup-overlay';
+        overlay.innerHTML = `
+          <div class="claim-popup">
+            <div class="claim-popup-icon">×</div>
+            <h2 class="claim-popup-title">Already Claimed</h2>
+            <p class="claim-popup-text">
+              <strong>${escapeHtml(claimedBy)}</strong> is already getting<br>
+              <em>"${escapeHtml(itemName)}"</em>
+            </p>
+            <p class="claim-popup-hint">Please choose a different gift to avoid duplicates.</p>
+            <button class="claim-popup-close">Got it</button>
+          </div>
+        `;
+        document.body.appendChild(overlay);
+        requestAnimationFrame(() => overlay.classList.add('open'));
+
+        const close = () => {
+            overlay.classList.remove('open');
+            setTimeout(() => overlay.remove(), 300);
+        };
+        overlay.querySelector('.claim-popup-close').addEventListener('click', close);
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    }
+
+    // --- Claim Confirmation (after successfully claiming) ---
+    function showClaimConfirmation(itemName, yourName) {
+        const overlay = document.createElement('div');
+        overlay.className = 'claim-popup-overlay';
+        overlay.innerHTML = `
+          <div class="claim-popup claim-popup-success">
+            <div class="claim-popup-icon claim-popup-icon-tick">&#10003;</div>
+            <h2 class="claim-popup-title">Claimed</h2>
+            <p class="claim-popup-text">
+              <strong>${escapeHtml(yourName)}</strong>, you've claimed<br>
+              <em>"${escapeHtml(itemName)}"</em>
+            </p>
+            <p class="claim-popup-hint">Other visitors will see this gift is taken.</p>
+            <button class="claim-popup-close">Done</button>
+          </div>
+        `;
+        document.body.appendChild(overlay);
+        requestAnimationFrame(() => overlay.classList.add('open'));
+
+        const close = () => {
+            overlay.classList.remove('open');
+            setTimeout(() => overlay.remove(), 300);
+        };
+        overlay.querySelector('.claim-popup-close').addEventListener('click', close);
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
     }
 
     tabs.forEach((tab) => {
@@ -1155,6 +1386,18 @@
         render();
     });
 
+    searchInput.addEventListener('input', (e) => {
+        currentSearch = e.target.value;
+        render();
+    });
+
+    priceFilterSelect.addEventListener('change', () => {
+        currentPriceFilter = priceFilterSelect.value;
+        render();
+    });
+    
+
+
     function openModal() {
         modalOverlay.classList.add('open');
         addBtn.classList.add('open');
@@ -1169,6 +1412,7 @@
         addBtn.classList.remove('open');
         document.body.style.overflow = '';
         itemForm.reset();
+        itemPriorityCheckbox.checked = false;
         fetchPreview.classList.remove('show');
         subcategoryGroup.style.display = 'none';
         subcategorySelect.value = '';
@@ -1229,10 +1473,7 @@
             currentUser = { email: 'Admin (Hardcoded)', id: 'admin' };
             localStorage.setItem('wishlist_admin_session', 'true');
             updateAuthUI();
-            authMessage.textContent = 'Welcome back!';
-            authMessage.className = 'auth-message success';
-            authMessage.style.display = 'block';
-            setTimeout(closeAuthModal, 1500);
+            closeAuthModal();
         } else {
             authMessage.textContent = 'Incorrect password.';
             authMessage.className = 'auth-message error';
@@ -1251,7 +1492,7 @@
             document.body.classList.add('is-authenticated');
             authBtn.style.display = 'none';
             userDisplay.style.display = 'flex';
-            userEmailSpan.textContent = currentUser.email;
+            userEmailSpan.innerHTML = '<span class="admin-badge">Admin</span>';
         } else {
             document.body.classList.remove('is-authenticated');
             authBtn.style.display = 'block';
@@ -1270,12 +1511,13 @@
         const category = document.getElementById('itemCategory').value;
         const price = document.getElementById('itemPrice').value.trim();
         const image = document.getElementById('itemImage').value.trim();
+        const is_priority = itemPriorityCheckbox.checked;
         const subcategory = category === 'clothes' ? subcategorySelect.value : '';
 
         if (!name || !url) return;
 
         if (editingItemId) {
-            await updateItem(editingItemId, { name, url, note, category, price, image, subcategory });
+            await updateItem(editingItemId, { name, url, note, category, price, image, subcategory, is_priority });
             editingItemId = null;
             formSubmitBtn.textContent = 'Add Item';
             document.querySelector('.modal-title').textContent = 'Add to Wishlist';
@@ -1289,6 +1531,7 @@
                 price,
                 image,
                 subcategory,
+                is_priority,
                 createdAt: Date.now(),
             };
             await saveItem(newItem);
@@ -1315,6 +1558,7 @@
         document.getElementById('itemNote').value = item.note || '';
         document.getElementById('itemCategory').value = item.category || 'misc';
         document.getElementById('itemPrice').value = item.price || '';
+        itemPriorityCheckbox.checked = !!item.is_priority;
         if (item.category === 'clothes') {
             subcategoryGroup.style.display = 'block';
             subcategorySelect.value = item.subcategory || '';
@@ -1362,6 +1606,20 @@
         clearTimeout(toastTimeout);
     });
 
+    function startSupabaseKeepalive() {
+        // Ping Supabase every 4 minutes to keep project active & prevent cold starts/pauses
+        setInterval(async () => {
+            try {
+                await fetch(`${SUPABASE_URL}/rest/v1/wishlist?select=id&limit=1`, {
+                    headers: getHeaders()
+                });
+                console.log('[Keepalive] Supabase pinged successfully');
+            } catch (e) {
+                console.warn('[Keepalive] Ping failed:', e);
+            }
+        }, 4 * 60 * 1000);
+    }
+
     async function init() {
         items = await loadItems();
         render();
@@ -1370,6 +1628,8 @@
             currentUser = { email: 'Admin (Hardcoded)', id: 'admin' };
             updateAuthUI();
         }
+
+        startSupabaseKeepalive();
     }
 
     init();
