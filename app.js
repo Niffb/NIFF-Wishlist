@@ -1372,14 +1372,67 @@
         overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
     }
 
+    // Function to set active category and scroll tab into view
+    function setCategory(catName) {
+        activeCategory = catName;
+        tabs.forEach((tab) => {
+            if (tab.dataset.category === catName) {
+                tab.classList.add('active');
+                tab.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+            } else {
+                tab.classList.remove('active');
+            }
+        });
+        render();
+    }
+
     tabs.forEach((tab) => {
         tab.addEventListener('click', () => {
-            tabs.forEach((t) => t.classList.remove('active'));
-            tab.classList.add('active');
-            activeCategory = tab.dataset.category;
-            render();
+            setCategory(tab.dataset.category);
         });
     });
+
+    // --- Touch Swipe Left/Right Navigation between Categories ---
+    (function initSwipeNavigation() {
+        const categories = Array.from(tabs).map(t => t.dataset.category);
+        let touchStartX = 0;
+        let touchStartY = 0;
+
+        document.addEventListener('touchstart', (e) => {
+            // Don't intercept swipe inside modals, form inputs or overlays
+            if (e.target.closest('.modal-overlay') || e.target.closest('input') || e.target.closest('select') || e.target.closest('button')) {
+                touchStartX = 0;
+                return;
+            }
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+        }, { passive: true });
+
+        document.addEventListener('touchend', (e) => {
+            if (!touchStartX) return;
+            const touchEndX = e.changedTouches[0].clientX;
+            const touchEndY = e.changedTouches[0].clientY;
+
+            const diffX = touchEndX - touchStartX;
+            const diffY = touchEndY - touchStartY;
+
+            // Ensure gesture was primarily horizontal swipe (threshold: 50px horizontal, less than 40px vertical)
+            if (Math.abs(diffX) > 50 && Math.abs(diffY) < 40) {
+                const currentIndex = categories.indexOf(activeCategory);
+                if (currentIndex === -1) return;
+
+                if (diffX < 0 && currentIndex < categories.length - 1) {
+                    // Swipe Left -> Next Category
+                    setCategory(categories[currentIndex + 1]);
+                } else if (diffX > 0 && currentIndex > 0) {
+                    // Swipe Right -> Previous Category
+                    setCategory(categories[currentIndex - 1]);
+                }
+            }
+            touchStartX = 0;
+            touchStartY = 0;
+        }, { passive: true });
+    })();
 
     sortSelect.addEventListener('change', () => {
         activeSort = sortSelect.value;
