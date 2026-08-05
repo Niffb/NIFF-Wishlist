@@ -476,13 +476,48 @@
         'site maintenance',
         'service unavailable',
         '403 forbidden',
-        '503 service'
+        '503 service',
+        'please wait',
+        'one moment',
+        'challenge-platform',
+        'ddos protection',
+        'bot protection',
+        'automated access',
+        'browser check',
+        'you have been blocked',
+        'ray id',
+        'enable javascript',
+        'cookies are required',
+        'loading...',
+        'redirecting...',
+        'please enable cookies',
+        'error 403',
+        'error 503',
+        'page not found',
+        '404 not found',
+        'sorry, you have been blocked'
     ];
+
+    // Brand-only titles that indicate the scraper only got the site name, not the product
+    const BRAND_ONLY_TITLES = new Set([
+        'amazon', 'boots', 'etsy', 'ebay', 'zara', 'nike', 'asos', 'adidas',
+        'sephora', 'argos', 'currys', 'apple', 'samsung', 'john lewis',
+        'selfridges', 'harrods', 'net-a-porter', 'farfetch', 'asos',
+        'prettylittlething', 'boohoo', 'shein', 'h&m', 'uniqlo', 'mango',
+        'cos', 'arket', 'weekday', 'monki', 'gap', 'next', 'primark',
+        'urban outfitters', 'anthropologie', 'free people', 'lululemon',
+        'new look', 'river island', 'topshop', 'missguided', 'plt',
+        'abercrombie', 'hollister', 'superdry', 'pandora', 'victorinox',
+        'the north face', 'patagonia', 'timberland', 'vans', 'converse',
+        'puma', 'reebok', 'new balance', 'asics', 'under armour',
+        'home', 'shop', 'store', 'welcome', 'official site', 'homepage'
+    ]);
 
     function isJunkTitle(title) {
         if (!title || typeof title !== 'string') return true;
         const lower = title.toLowerCase().trim();
-        if (['amazon', 'boots', 'etsy', 'ebay', 'zara', 'nike', 'asos'].includes(lower)) return true;
+        if (lower.length < 2) return true;
+        if (BRAND_ONLY_TITLES.has(lower)) return true;
         return JUNK_TITLE_PATTERNS.some(p => lower.includes(p));
     }
 
@@ -648,6 +683,7 @@
             const u = new URL(url);
             const hostname = u.hostname.toLowerCase();
             const path = u.pathname;
+            const pathParts = path.split('/').filter(Boolean);
 
             // --- AMAZON ---
             if (hostname.includes('amazon.')) {
@@ -672,20 +708,20 @@
             }
             // --- ASOS ---
             else if (hostname.includes('asos.com')) {
-                const parts = path.split('/').filter(p => p && p.includes('-'));
-                if (parts.length > 0) {
-                    result.name = parts[0].replace(/-/g, ' ');
+                // ASOS: /product-name-slug/prd/12345
+                const prdMatch = path.match(/\/([^/]+)\/prd\//);
+                if (prdMatch) {
+                    result.name = prdMatch[1].replace(/-/g, ' ');
                 } else {
-                    result.name = parseNameFromUrl(url);
+                    const parts = path.split('/').filter(p => p && p.includes('-'));
+                    if (parts.length > 0) result.name = parts[0].replace(/-/g, ' ');
                 }
             }
             // --- ABERCROMBIE / HOLLISTER ---
             else if (hostname.includes('abercrombie.') || hostname.includes('hollister.')) {
-                // URL pattern: /shop/uk/p/product-name-slug-12345
                 const slugMatch = path.match(/\/p\/([^/?#]+)/);
                 if (slugMatch) {
                     let slug = slugMatch[1];
-                    // Strip trailing product ID
                     slug = slug.replace(/-\d{4,}$/, '');
                     result.name = slug.replace(/-/g, ' ');
                 }
@@ -700,19 +736,133 @@
                 const slugMatch = path.match(/productpage\.([^.]+)\.html/i) || path.match(/\/([^/]+)\.html/i);
                 if (slugMatch) result.name = slugMatch[1].replace(/-/g, ' ');
             }
+            // --- NIKE ---
+            else if (hostname.includes('nike.com')) {
+                // Nike: /t/product-name/SKUCODE
+                const tMatch = path.match(/\/t\/([^/]+)/);
+                if (tMatch) result.name = tMatch[1].replace(/-/g, ' ');
+            }
+            // --- ADIDAS ---
+            else if (hostname.includes('adidas.')) {
+                // Adidas: /product-name-slug/PRODUCTCODE.html
+                const slugMatch = path.match(/\/([^/]+-[^/]+)\/[A-Z0-9]+\.html/i);
+                if (slugMatch) result.name = slugMatch[1].replace(/-/g, ' ');
+                else result.name = parseNameFromUrl(url);
+            }
+            // --- BOOTS ---
+            else if (hostname.includes('boots.com')) {
+                // Boots: /brand-product-name-10246231
+                const slugParts = pathParts.filter(p => p.includes('-') && p.length > 5);
+                if (slugParts.length > 0) {
+                    result.name = slugParts[slugParts.length - 1].replace(/-\d{5,}$/, '').replace(/-/g, ' ');
+                }
+            }
+            // --- SEPHORA ---
+            else if (hostname.includes('sephora.')) {
+                // Sephora: /brand/product-name-P12345
+                const slugMatch = path.match(/\/([^/]+-P\d+)/i);
+                if (slugMatch) {
+                    result.name = slugMatch[1].replace(/-P\d+$/i, '').replace(/-/g, ' ');
+                } else {
+                    result.name = parseNameFromUrl(url);
+                }
+            }
+            // --- SELFRIDGES ---
+            else if (hostname.includes('selfridges.com')) {
+                const slugMatch = path.match(/\/([^/]+_\d+)/);
+                if (slugMatch) result.name = slugMatch[1].replace(/_\d+$/, '').replace(/[-_]/g, ' ');
+                else result.name = parseNameFromUrl(url);
+            }
+            // --- JOHN LEWIS ---
+            else if (hostname.includes('johnlewis.com')) {
+                // /product-name/p12345
+                const slugMatch = path.match(/\/([^/]+)\/p\d+/);
+                if (slugMatch) result.name = slugMatch[1].replace(/-/g, ' ');
+                else result.name = parseNameFromUrl(url);
+            }
+            // --- ARGOS ---
+            else if (hostname.includes('argos.co.uk')) {
+                const slugMatch = path.match(/\/product\/\d+\/([^/?#]+)/);
+                if (slugMatch) result.name = slugMatch[1].replace(/-/g, ' ');
+                else result.name = parseNameFromUrl(url);
+            }
+            // --- CURRYS ---
+            else if (hostname.includes('currys.co.uk')) {
+                const slugMatch = path.match(/\/([^/]+)\/\d{6,}/);
+                if (slugMatch) result.name = slugMatch[1].replace(/-/g, ' ');
+                else result.name = parseNameFromUrl(url);
+            }
+            // --- PRETTYLITTLETHING ---
+            else if (hostname.includes('prettylittlething.')) {
+                const slugMatch = path.match(/\/([^/]+-\w+)\.html/i);
+                if (slugMatch) result.name = slugMatch[1].replace(/-/g, ' ');
+                else result.name = parseNameFromUrl(url);
+            }
+            // --- BOOHOO ---
+            else if (hostname.includes('boohoo.com')) {
+                const slugMatch = path.match(/\/([^/]+)\.html/i);
+                if (slugMatch) result.name = slugMatch[1].replace(/-/g, ' ');
+                else result.name = parseNameFromUrl(url);
+            }
+            // --- SHEIN ---
+            else if (hostname.includes('shein.')) {
+                const slugMatch = path.match(/\/([^/]+-p-\d+)/i);
+                if (slugMatch) result.name = slugMatch[1].replace(/-p-\d+$/, '').replace(/-/g, ' ');
+                else result.name = parseNameFromUrl(url);
+            }
+            // --- UNIQLO ---
+            else if (hostname.includes('uniqlo.com')) {
+                result.name = parseNameFromUrl(url);
+            }
+            // --- APPLE ---
+            else if (hostname.includes('apple.com')) {
+                // Apple: /shop/product/MLXY3B/product-name or /iphone-16-pro
+                const productMatch = path.match(/\/shop\/product\/[A-Z0-9]+\/([^/?#]+)/i);
+                if (productMatch) result.name = productMatch[1].replace(/-/g, ' ');
+                else result.name = parseNameFromUrl(url);
+            }
+            // --- URBAN OUTFITTERS ---
+            else if (hostname.includes('urbanoutfitters.com')) {
+                const slugMatch = path.match(/\/shop\/([^/?#]+)/);
+                if (slugMatch) result.name = slugMatch[1].replace(/-/g, ' ');
+                else result.name = parseNameFromUrl(url);
+            }
+            // --- PANDORA ---
+            else if (hostname.includes('pandora.')) {
+                result.name = parseNameFromUrl(url);
+            }
+            // --- NEXT ---
+            else if (hostname.includes('next.co.uk')) {
+                const slugMatch = path.match(/\/style\/[a-z]+\d+\/([^/?#]+)/i);
+                if (slugMatch) result.name = slugMatch[1].replace(/-/g, ' ').replace(/#.*/, '');
+                else result.name = parseNameFromUrl(url);
+            }
+            // --- VICTORINOX ---
+            else if (hostname.includes('victorinox.')) {
+                // /en-GB/Products/Category/SubCat/Product-Name/p/CODE
+                const pIndex = pathParts.findIndex(p => p.toLowerCase() === 'p');
+                if (pIndex > 0) {
+                    result.name = pathParts[pIndex - 1].replace(/-/g, ' ');
+                } else {
+                    result.name = parseNameFromUrl(url);
+                }
+            }
             // --- Generic: try URL slug ---
             else {
                 result.name = parseNameFromUrl(url);
             }
 
-            // Clean up name if found
+            // Clean up name if found — strip symbols and title case
             if (result.name) {
                 result.name = result.name
+                    .replace(/[™®©]/g, '')
                     .split(' ')
                     .filter(w => w.length > 0)
                     .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
                     .join(' ')
                     .trim();
+                // Strip trailing product codes/IDs
+                result.name = result.name.replace(/\s+[\d.]{5,}$/, '').trim();
                 if (result.name.length > 100) result.name = result.name.substring(0, 97) + '...';
             }
         } catch (e) { }
@@ -881,6 +1031,57 @@
                 const priceRegex = /(?:£|€|\$)\s?[\d,.]+(?:\.\d{2})?/;
                 const match = searchStr.match(priceRegex);
                 if (match) result.price = match[0];
+            }
+
+            // --- 5. Additional image extraction (if still missing) ---
+            if (!result.image.url) {
+                // Try common product image selectors
+                const imgSelectors = [
+                    'img[data-zoom-image]',        // Zoom image attribute
+                    'img.product-image',            // Common class
+                    'img.pdp-image',                // Product detail page image
+                    'img[data-main-image]',         // Main image marker
+                    '.product-gallery img',         // Gallery images
+                    '.product-media img',           // Media container
+                    '.product-hero img',            // Hero image
+                    '#product-image img',           // Product image ID
+                    '[data-testid="product-image"] img',
+                    '.slick-active img',            // Carousel active slide
+                    'picture source[type="image/webp"]', // Modern picture element
+                ];
+                for (const selector of imgSelectors) {
+                    try {
+                        const el = doc.querySelector(selector);
+                        if (el) {
+                            const imgUrl = el.getAttribute('data-zoom-image') ||
+                                          el.getAttribute('data-src') ||
+                                          el.getAttribute('data-original') ||
+                                          el.getAttribute('data-lazy-src') ||
+                                          el.getAttribute('srcset')?.split(',')[0]?.trim()?.split(' ')[0] ||
+                                          el.getAttribute('src') ||
+                                          el.getAttribute('content') || '';
+                            if (imgUrl && imgUrl.startsWith('http') && !imgUrl.includes('favicon') && !imgUrl.includes('logo')) {
+                                result.image.url = imgUrl;
+                                break;
+                            }
+                        }
+                    } catch (e) {}
+                }
+            }
+
+            // --- 6. Extract image from inline JSON/JS data (for SPAs) ---
+            if (!result.image.url) {
+                const scriptEls = doc.querySelectorAll('script:not([type]), script[type="text/javascript"]');
+                for (const script of scriptEls) {
+                    const text = script.textContent || '';
+                    if (text.length < 100 || text.length > 500000) continue;
+                    // Look for image URLs in JS data
+                    const imgMatch = text.match(/"(?:imageUrl|imageSrc|productImage|mainImage|heroImage|primaryImage|fullImage|largeImage)"\s*:\s*"(https?:\/\/[^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/i);
+                    if (imgMatch && !imgMatch[1].includes('favicon') && !imgMatch[1].includes('logo')) {
+                        result.image.url = imgMatch[1].replace(/\\\//g, '/');
+                        break;
+                    }
+                }
             }
 
         } catch (e) {
