@@ -14,7 +14,12 @@
     rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
-
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#000000">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="NIFF Wishlist">
+  <link rel="apple-touch-icon" href="favicon.svg">
 </head>
 
 <body>
@@ -29,6 +34,7 @@
       </div>
     </div>
     <div class="header-actions">
+      <button id="shareBtn" class="btn-share" aria-label="Share Wishlist" title="Share Wishlist">Share</button>
       <button id="authBtn" class="btn-auth">Login</button>
       <div id="userDisplay" class="user-display" style="display: none;">
         <span id="userEmail"></span>
@@ -41,6 +47,7 @@
   <nav class="category-nav">
     <div class="nav-inner">
       <button class="cat-tab active" data-category="all">All</button>
+      <button class="cat-tab" data-category="priority">⭐ Priority</button>
       <button class="cat-tab" data-category="clothes">Clothes</button>
       <button class="cat-tab" data-category="jewellery">Jewellery</button>
       <button class="cat-tab" data-category="shoes">Shoes</button>
@@ -50,6 +57,7 @@
       <button class="cat-tab" data-category="home">Home</button>
       <button class="cat-tab" data-category="books">Books</button>
       <button class="cat-tab" data-category="misc">Miscellaneous</button>
+      <button class="cat-tab" data-category="received" id="receivedTab" style="display: none;">Received</button>
       <div class="sort-wrapper">
         <label for="sortSelect" class="sort-label">Sort:</label>
         <select id="sortSelect" class="sort-select">
@@ -169,6 +177,10 @@
         <div class="form-group">
           <label for="itemNote">Note <span class="optional">(optional)</span></label>
           <input type="text" id="itemNote" placeholder="e.g. Size M, in cream">
+        </div>
+        <div class="form-group">
+          <label for="itemVariant">Size / Volume / Weight <span class="optional">(auto-filled)</span></label>
+          <input type="text" id="itemVariant" placeholder="e.g. 50ml, 100g, Pack of 2">
         </div>
         <div class="form-group checkbox-group">
           <label class="checkbox-label">
