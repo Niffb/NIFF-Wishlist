@@ -297,6 +297,63 @@
         };
     }
 
+    // Encode variant and is_received into existing Supabase columns
+    function toDbFormat(item) {
+        const copy = { ...item };
+        
+        // Convert createdAt to created_at
+        if (copy.createdAt) {
+            copy.created_at = copy.createdAt;
+            delete copy.createdAt;
+        }
+
+        // Handle is_received by storing in reserved_by if special flag
+        if (copy.is_received) {
+            copy.reserved_by = '__RECEIVED__';
+        } else if (copy.reserved_by === '__RECEIVED__') {
+            copy.reserved_by = null;
+        }
+        delete copy.is_received;
+
+        // Handle variant by packing into note as [variant] if present
+        if (copy.variant) {
+            const cleanNote = (copy.note || '').replace(/^\[[^\]]+\]\s*/, '').trim();
+            copy.note = cleanNote ? `[${copy.variant}] ${cleanNote}` : `[${copy.variant}]`;
+        }
+        delete copy.variant;
+
+        // Remove any unknown properties before sending to PostgREST
+        const validColumns = ['id', 'name', 'url', 'note', 'category', 'price', 'image', 'subcategory', 'is_priority', 'reserved_by', 'created_at'];
+        const dbPayload = {};
+        for (const key of validColumns) {
+            if (copy[key] !== undefined) {
+                dbPayload[key] = copy[key];
+            }
+        }
+        return dbPayload;
+    }
+
+    // Decode variant and is_received from existing Supabase columns
+    function fromDbFormat(dbItem) {
+        const item = {
+            ...dbItem,
+            createdAt: dbItem.created_at,
+            is_received: dbItem.reserved_by === '__RECEIVED__',
+            reserved_by: dbItem.reserved_by === '__RECEIVED__' ? null : dbItem.reserved_by,
+            variant: '',
+            note: dbItem.note || ''
+        };
+
+        // Unpack [variant] from note if present
+        const variantMatch = (item.note || '').match(/^\[([^\]]+)\]\s*(.*)$/);
+        if (variantMatch) {
+            item.variant = variantMatch[1];
+            item.note = variantMatch[2];
+        }
+
+        return item;
+    }
+
     async function loadItems() {
         try {
             const response = await fetch(`${SUPABASE_URL}/rest/v1/wishlist?select=*&order=created_at.desc`, {
@@ -305,11 +362,7 @@
             if (!response.ok) throw new Error('Failed to load items from Supabase');
             const data = await response.json();
             
-            // Map created_at to createdAt for app logic
-            return data.map(item => ({
-                ...item,
-                createdAt: item.created_at
-            }));
+            return data.map(fromDbFormat);
         } catch (error) {
             console.error('Error loading items from Supabase:', error);
             return [];
@@ -317,8 +370,7 @@
     }
 
     async function saveItem(item) {
-        const dbItem = { ...item, created_at: item.createdAt || Date.now() };
-        delete dbItem.createdAt;
+        const dbItem = toDbFormat(item);
 
         try {
             const response = await fetch(`${SUPABASE_URL}/rest/v1/wishlist`, {
@@ -358,11 +410,7 @@
     }
 
     async function updateItem(id, updates) {
-        const dbUpdates = { ...updates };
-        if (dbUpdates.createdAt) {
-            dbUpdates.created_at = dbUpdates.createdAt;
-            delete dbUpdates.createdAt;
-        }
+        const dbUpdates = toDbFormat(updates);
 
         try {
             const response = await fetch(`${SUPABASE_URL}/rest/v1/wishlist?id=eq.${id}`, {
@@ -1029,7 +1077,9 @@
                         console.warn('[Scraper Fallback] Image search failed:', e);
                     }
                 }
-                if (!fallbackImage) fallbackImage = getFaviconFallback(url);
+                if (!fallbackImage || fallbackImage.includes('favicon')) {
+                    fallbackImage = `https://image.thum.io/get/width/600/crop/400/noanimate/${url}`;
+                }
                 imageInput.value = fallbackImage;
 
                 // Price fallback via search engine
@@ -1040,7 +1090,6 @@
                         const searchData = await searchRes.json();
                         if (searchData.price) {
                             detectedPrice = searchData.price;
-                            priceInput.value = detectedPrice;
                             console.log('[Scraper Fallback] Price found via search:', detectedPrice);
                         }
                     }
@@ -1048,9 +1097,20 @@
                     console.warn('[Scraper Fallback] Price search failed:', e);
                 }
 
-                // Auto-detect category even on fallback
+                if (detectedPrice && !/^(?:£|€|\$)/.test(detectedPrice)) {
+                    const cleanNum = parseFloat(detectedPrice.replace(/[^\d.]/g, ''));
+                    if (!isNaN(cleanNum)) detectedPrice = `£${cleanNum.toFixed(2)}`;
+                }
+                priceInput.value = detectedPrice;
+
+                // Auto-detect category & variant on fallback
                 const detected = detectCategory(url, parsedName, '');
                 applyCategoryToForm(detected);
+
+                const detectedVariant = detectVariant('', parsedName, url);
+                if (detectedVariant && itemVariantInput) {
+                    itemVariantInput.value = detectedVariant;
+                }
 
                 fetchPreviewTitle.textContent = parsedName || 'Manual entry needed';
                 fetchPreviewImg.src = fallbackImage;
