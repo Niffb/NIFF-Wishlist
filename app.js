@@ -406,9 +406,41 @@
         return div.innerHTML;
     }
 
+    const JUNK_TITLE_PATTERNS = [
+        'robot check',
+        'just a moment',
+        'access denied',
+        'are you a human',
+        'pardon our interruption',
+        'attention required',
+        'security check',
+        'cloudflare',
+        'shield square',
+        'incapsula',
+        'distil',
+        'perimeterx',
+        'imperva',
+        'blocked',
+        'captcha',
+        'verify you are human',
+        'checking your browser',
+        'human verification',
+        'site maintenance',
+        'service unavailable',
+        '403 forbidden',
+        '503 service'
+    ];
+
+    function isJunkTitle(title) {
+        if (!title || typeof title !== 'string') return true;
+        const lower = title.toLowerCase().trim();
+        if (['amazon', 'boots', 'etsy', 'ebay', 'zara', 'nike', 'asos'].includes(lower)) return true;
+        return JUNK_TITLE_PATTERNS.some(p => lower.includes(p));
+    }
+
     // --- Clean Title Helper ---
     function cleanTitle(title, url) {
-        if (!title) return '';
+        if (!title || isJunkTitle(title)) return '';
 
         let cleaned = title;
 
@@ -861,13 +893,7 @@
             const domainData = parseDomainSpecifics(url);
             const data = fetchResult?.data || null;
 
-            const isJunk = data && (
-                (data.title || '').toLowerCase().includes('robot check') ||
-                (data.title || '').toLowerCase() === 'amazon' ||
-                (data.title || '').toLowerCase().includes('just a moment') ||
-                (data.title || '').toLowerCase().includes('access denied') ||
-                (data.title || '').toLowerCase().includes('are you a human')
-            );
+            const isJunk = !data || !data.title || isJunkTitle(data.title);
 
             if (data && !isJunk) {
                 // --- Name: best from fetched title, domain-specific, or URL ---
