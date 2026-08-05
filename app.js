@@ -8,75 +8,95 @@
     // --- Constants ---
     const STORAGE_KEY = 'wishlist_items';
     const MICROLINK_API = 'https://api.microlink.io';
-    const CATEGORIES = ['clothes', 'jewellery', 'shoes', 'bags', 'cosmetics', 'stationery', 'home', 'books', 'misc'];
+    const CATEGORIES = ['clothes', 'tech', 'accessories', 'health', 'home', 'misc'];
     const CATEGORY_LABELS = {
         clothes: 'Clothes',
-        jewellery: 'Jewellery',
-        shoes: 'Shoes',
-        bags: 'Bags',
-        cosmetics: 'Cosmetics',
-        stationery: 'Stationery',
+        tech: 'Tech',
+        accessories: 'Accessories',
+        health: 'Health',
         home: 'Home',
-        books: 'Books',
-        misc: 'Miscellaneous',
+        misc: 'Misc',
+        // Aliases for stored database categories
+        shoes: 'Clothes',
+        watches: 'Accessories',
+        jewellery: 'Accessories',
+        edc: 'Accessories',
+        bags: 'Accessories',
+        stationery: 'Accessories',
+        grooming: 'Health',
+        cosmetics: 'Health',
+        fitness: 'Health',
+        books: 'Misc',
     };
 
+    function getCategoryAlias(cat) {
+        if (!cat) return 'misc';
+        const lower = cat.toLowerCase();
+        if (['clothes', 'shoes'].includes(lower)) return 'clothes';
+        if (['tech'].includes(lower)) return 'tech';
+        if (['accessories', 'watches', 'jewellery', 'edc', 'bags', 'stationery'].includes(lower)) return 'accessories';
+        if (['health', 'grooming', 'cosmetics', 'fitness'].includes(lower)) return 'health';
+        if (['home'].includes(lower)) return 'home';
+        return 'misc';
+    }
+
     const SUBCATEGORY_LABELS = {
-        tops: 'Tops',
-        't-shirts': 'T-Shirts',
+        't-shirts': 'T-Shirts & Tees',
+        shirts: 'Shirts & Polos',
         jumpers: 'Jumpers & Knitwear',
         hoodies: 'Hoodies & Sweatshirts',
         jackets: 'Jackets & Coats',
-        dresses: 'Dresses',
-        skirts: 'Skirts',
         trousers: 'Trousers & Jeans',
         shorts: 'Shorts',
-        activewear: 'Activewear',
-        swimwear: 'Swimwear',
-        underwear: 'Underwear & Loungewear',
-        accessories: 'Accessories',
+        shoes: 'Shoes & Boots',
+        suits: 'Suits & Tailoring',
+        accessories: 'Hats & Accessories',
         other: 'Other',
+        // Legacy compatibility
+        tops: 'Shirts & Polos',
+        dresses: 'Suits & Tailoring',
+        skirts: 'Shorts',
+        activewear: 'Shorts',
+        underwear: 'Other',
+        swimwear: 'Shorts',
     };
 
     // ==========================================
     //  AUTO-CATEGORISATION
     // ==========================================
 
-    // Keyword maps for category detection
+    // Keyword maps for exact categories
     const CATEGORY_KEYWORDS = {
-        shoes: ['shoe', 'shoes', 'sneaker', 'sneakers', 'trainer', 'trainers', 'boot', 'boots', 'heel', 'heels', 'sandal', 'sandals', 'loafer', 'loafers', 'slipper', 'slippers', 'mule', 'mules', 'clog', 'clogs', 'espadrille', 'footwear', 'pump', 'pumps', 'flat', 'flats', 'oxford', 'derby', 'brogue'],
-        bags: ['bag', 'bags', 'handbag', 'handbags', 'tote', 'backpack', 'rucksack', 'clutch', 'purse', 'crossbody', 'shoulder-bag', 'satchel', 'duffel', 'holdall', 'wallet', 'wallets', 'card-holder', 'cardholder'],
-        jewellery: ['jewellery', 'jewelry', 'necklace', 'bracelet', 'ring', 'rings', 'earring', 'earrings', 'pendant', 'charm', 'bangle', 'anklet', 'brooch', 'cufflink', 'cufflinks', 'chain', 'choker'],
-        cosmetics: ['cosmetic', 'cosmetics', 'makeup', 'make-up', 'lipstick', 'mascara', 'foundation', 'concealer', 'blush', 'bronzer', 'highlighter', 'eyeshadow', 'eyeliner', 'skincare', 'skin-care', 'moisturiser', 'moisturizer', 'serum', 'cleanser', 'toner', 'perfume', 'fragrance', 'cologne', 'beauty', 'nail-polish', 'nail polish'],
-        books: ['book', 'books', 'novel', 'hardback', 'paperback', 'hardcover', 'ebook', 'e-book', 'audiobook', 'manga', 'comic'],
-        stationery: ['stationery', 'stationary', 'notebook', 'planner', 'journal', 'pen', 'pens', 'pencil', 'pencils', 'marker', 'markers', 'washi', 'sticker', 'stickers', 'stamp', 'stamps', 'envelope'],
-        home: ['home', 'homeware', 'homewares', 'furniture', 'candle', 'candles', 'cushion', 'throw', 'blanket', 'rug', 'lamp', 'vase', 'decor', 'decoration', 'kitchenware', 'bedding', 'towel', 'mirror', 'storage', 'organiser', 'organizer', 'mug', 'plant', 'planter'],
-        clothes: ['dress', 'dresses', 'shirt', 'shirts', 'blouse', 'top', 'tops', 'jumper', 'jumpers', 'sweater', 'sweaters', 'hoodie', 'hoodies', 'sweatshirt', 'jacket', 'jackets', 'coat', 'coats', 'blazer', 'trousers', 'pants', 'jeans', 'leggings', 'shorts', 'skirt', 'skirts', 'cardigan', 'knitwear', 'knit', 'bodysuit', 'lingerie', 'bra', 'underwear', 'swimsuit', 'bikini', 'swimwear', 'activewear', 'sportswear', 'tracksuit', 'polo', 't-shirt', 'tshirt', 'tee', 'vest', 'tank', 'crop', 'dungaree', 'dungarees', 'romper', 'jumpsuit', 'playsuit', 'crew', 'pullover', 'parka', 'gilet', 'anorak', 'windbreaker'],
+        clothes: ['shirt', 'shirts', 'polo', 'polos', 't-shirt', 'tshirt', 'tee', 'tees', 'jumper', 'jumpers', 'sweater', 'sweaters', 'hoodie', 'hoodies', 'sweatshirt', 'sweatshirts', 'jacket', 'jackets', 'coat', 'coats', 'blazer', 'blazers', 'suit', 'suits', 'trousers', 'pants', 'jeans', 'shorts', 'chino', 'chinos', 'shoe', 'shoes', 'sneaker', 'sneakers', 'trainer', 'trainers', 'boot', 'boots', 'loafer', 'loafers', 'slipper', 'footwear', 'underwear', 'boxers', 'socks', 'pyjamas', 'loungewear', 'tracksuit', 'dress', 'top'],
+        tech: ['tech', 'gadget', 'gadgets', 'headphone', 'headphones', 'earphone', 'earphones', 'earbuds', 'speaker', 'speakers', 'monitor', 'keyboard', 'mouse', 'charger', 'powerbank', 'cable', 'phone', 'ipad', 'macbook', 'laptop', 'camera', 'drone', 'console', 'controller', 'gaming', 'smartwatch', 'apple watch', 'audio', 'wireless', 'bluetooth'],
+        accessories: ['watch', 'watches', 'timepiece', 'chronograph', 'strap', 'watchband', 'sunglasses', 'shades', 'belt', 'belts', 'wallet', 'wallets', 'card-holder', 'cardholder', 'keychain', 'ring', 'rings', 'chain', 'bracelet', 'necklace', 'cufflink', 'cufflinks', 'edc', 'knife', 'knives', 'swiss army', 'multi-tool', 'multitool', 'tool', 'tools', 'flashlight', 'torch', 'pocket knife', 'pen', 'victorinox', 'leatherman', 'bag', 'bags', 'backpack', 'backpacks', 'rucksack', 'duffel', 'holdall', 'sling', 'crossbody', 'tote', 'pouch', 'luggage', 'jewellery', 'jewelry'],
+        health: ['cologne', 'fragrance', 'perfume', 'eau de parfum', 'eau de toilette', 'aftershave', 'beard', 'shaving', 'razor', 'trimmer', 'clipper', 'pomade', 'hair clay', 'hair wax', 'skincare', 'skin-care', 'moisturiser', 'moisturizer', 'cleanser', 'serum', 'deodorant', 'shower gel', 'grooming', 'health', 'fitness', 'gym', 'workout', 'supplements', 'protein', 'vitamins', 'cosmetic', 'cosmetics'],
+        home: ['home', 'homeware', 'furniture', 'coffee', 'espresso', 'mug', 'mugs', 'candle', 'candles', 'lamp', 'desk', 'chair', 'bedding', 'pillow', 'poster', 'art', 'plant', 'planter', 'glassware', 'decanter', 'decor', 'kitchen', 'mirror', 'storage'],
+        misc: ['book', 'books', 'novel', 'hardback', 'paperback', 'hardcover', 'ebook', 'audiobook', 'manga', 'comic', 'graphic novel', 'biography', 'stationery', 'notebook', 'journal', 'misc', 'miscellaneous'],
     };
 
     // Subcategory keyword detection (for clothes only)
     const SUBCATEGORY_KEYWORDS = {
-        tops: ['top', 'tops', 'blouse', 'shirt', 'shirts', 'polo', 'cami', 'bodysuit', 'crop-top', 'crop top', 'vest', 'tank'],
-        't-shirts': ['t-shirt', 'tshirt', 'tee', 't shirt', 'graphic tee'],
-        jumpers: ['jumper', 'jumpers', 'sweater', 'sweaters', 'knitwear', 'knit', 'cardigan', 'pullover', 'crew neck', 'crew sweater', 'v-neck sweater'],
+        't-shirts': ['t-shirt', 'tshirt', 'tee', 'tees', 'graphic tee', 'heavyweight tee'],
+        shirts: ['shirt', 'shirts', 'polo', 'polos', 'button-down', 'overshirt', 'flannel', 'linen shirt', 'dress shirt', 'top'],
+        jumpers: ['jumper', 'jumpers', 'sweater', 'sweaters', 'knitwear', 'knit', 'cardigan', 'pullover', 'crew neck'],
         hoodies: ['hoodie', 'hoodies', 'sweatshirt', 'sweatshirts', 'zip-up', 'zip up', 'tracksuit'],
-        jackets: ['jacket', 'jackets', 'coat', 'coats', 'blazer', 'parka', 'gilet', 'anorak', 'windbreaker', 'bomber', 'denim jacket', 'leather jacket', 'puffer', 'trench', 'overcoat', 'mac'],
-        dresses: ['dress', 'dresses', 'gown', 'maxi dress', 'midi dress', 'mini dress'],
-        skirts: ['skirt', 'skirts', 'mini skirt', 'midi skirt', 'maxi skirt'],
-        trousers: ['trousers', 'pants', 'jeans', 'chinos', 'cargo', 'wide-leg', 'straight-leg', 'leggings', 'joggers', 'dungaree', 'dungarees'],
-        shorts: ['shorts', 'short'],
-        activewear: ['activewear', 'sportswear', 'gym', 'running', 'yoga', 'sports bra', 'legging'],
-        swimwear: ['swimwear', 'swimsuit', 'bikini', 'swimming', 'swim', 'trunks', 'one-piece'],
-        underwear: ['underwear', 'lingerie', 'bra', 'briefs', 'boxers', 'pyjamas', 'pajamas', 'loungewear', 'nightwear', 'sleepwear', 'robe', 'dressing gown', 'socks'],
-        accessories: ['scarf', 'scarves', 'hat', 'hats', 'cap', 'beanie', 'gloves', 'belt', 'belts', 'tie', 'ties', 'sunglasses'],
+        jackets: ['jacket', 'jackets', 'coat', 'coats', 'blazer', 'parka', 'gilet', 'anorak', 'windbreaker', 'bomber', 'denim jacket', 'leather jacket', 'puffer', 'fleece'],
+        trousers: ['trousers', 'pants', 'jeans', 'chinos', 'cargo', 'joggers', 'sweatpants'],
+        shorts: ['shorts', 'short', 'swim shorts', 'cargo shorts'],
+        suits: ['suit', 'suits', 'tailoring', 'tuxedo', 'waistcoat'],
+        activewear: ['activewear', 'sportswear', 'gym', 'running', 'workout', 'training', 'compression'],
+        underwear: ['underwear', 'boxers', 'briefs', 'socks', 'pyjamas', 'pajamas', 'loungewear', 'sleepwear', 'robe'],
+        accessories: ['cap', 'caps', 'beanie', 'hat', 'hats', 'scarf', 'scarves', 'gloves', 'belt', 'belts', 'tie', 'ties'],
     };
 
-    // Fashion-focused domain patterns
-    const FASHION_DOMAINS = ['asos', 'zara', 'hm', 'uniqlo', 'mango', 'boohoo', 'prettylittlething', 'plt', 'missguided', 'topshop', 'next', 'primark', 'shein', 'abercrombie', 'hollister', 'gap', 'pull&bear', 'bershka', 'stradivarius', 'massimo', 'cos', 'arket', 'weekday', 'monki', 'superdry', 'levi', 'nike', 'adidas', 'puma', 'reebok', 'newbalance', 'converse', 'vans', 'northface', 'patagonia', 'gymshark', 'river-island', 'riverisland', 'urbanoutfitters', 'freepeople', 'anthropologie', 'self-portrait', 'reiss', 'whistles', 'allsaints', 'ted-baker', 'tedbaker', 'karen-millen', 'karenmillen', 'oasis', 'warehouse', 'dorothyperkins', 'wallis', 'burton', 'jacquemus', 'reformation', 'nastygal', 'depop', 'vinted', 'grailed'];
-    const SHOE_DOMAINS = ['nike', 'adidas', 'puma', 'reebok', 'newbalance', 'converse', 'vans', 'drmartenss', 'drmartens', 'clarks', 'timberland', 'ugg', 'crocs', 'birkenstock', 'schuh', 'office', 'jdsports', 'footlocker', 'footasylum', 'size'];
-    const BEAUTY_DOMAINS = ['sephora', 'boots', 'superdrug', 'cultbeauty', 'lookfantastic', 'beautybay', 'spacenk', 'theordinary', 'glossier', 'charlotte-tilbury', 'charlottetilbury', 'mac', 'nars', 'fenty', 'rare-beauty', 'rarebeauty', 'benefit', 'clinique', 'estee', 'lancome', 'kiehls', 'lush', 'thebodyshop'];
+    // Domain patterns
+    const TECH_DOMAINS = ['apple.com', 'currys', 'anker', 'logitech', 'keychron', 'razer', 'playstation', 'xbox', 'bose', 'sony', 'samsung', 'dji', 'garmin', 'corsair', 'elgato', 'scan.co.uk'];
+    const ACCESSORY_DOMAINS = ['victorinox', 'heinnie', 'bladehq', 'leatherman', 'bellroy', 'benchmade', 'spyderco', 'gerber', 'olight', 'watch', 'seiko', 'casio', 'g-shock', 'gshock', 'tissot', 'omega', 'rolex', 'tudor', 'timex', 'hamilton', 'chimi', 'ray-ban', 'rayban', 'oakley', 'sunglasshut'];
+    const HEALTH_DOMAINS = ['horace', 'manscaped', 'kiehls', 'byredo', 'boots', 'superdrug', 'lookfantastic', 'murdock', 'bulldog', 'hairstory', 'crew', 'gymshark', 'castore', 'underarmour', 'rapha', 'cotopaxi', 'patagonia', 'finisterre', 'myprotein', 'bulk', 'rogue', 'decathlon'];
+    const FASHION_DOMAINS = ['mrporter', 'endclothing', 'ssense', 'percival', 'uniqlo', 'zara', 'hm', 'mango', 'asos', 'next', 'abercrombie', 'hollister', 'gap', 'levi', 'superdry', 'reiss', 'cos', 'arket', 'weekday', 'massimo', 'ralphlauren', 'tommy', 'lacoste', 'carhartt', 'stussy', 'palace', 'nike', 'adidas', 'puma', 'reebok', 'newbalance', 'converse', 'vans', 'drmartens', 'clarks', 'timberland', 'crocs', 'birkenstock', 'footlocker', 'jdsports', 'size'];
     const BOOK_DOMAINS = ['waterstones', 'bookdepository', 'penguin', 'harpercollins', 'panmacmillan', 'blackwells', 'foyles', 'wob', 'abebooks', 'wordery'];
-    const HOME_DOMAINS = ['ikea', 'wayfair', 'dunelm', 'johnlewis', 'next', 'habitat', 'madecom', 'made', 'westelm', 'anthropologie', 'oliverbonas', 'hm-home', 'zarahome', 'tkmaxx', 'homesense'];
+    const HOME_DOMAINS = ['ikea', 'wayfair', 'dunelm', 'johnlewis', 'next', 'habitat', 'madecom', 'made', 'westelm', 'oliverbonas', 'zarahome', 'tkmaxx', 'homesense'];
 
     /**
      * Detect category and subcategory from URL + product metadata.
@@ -94,23 +114,19 @@
             const domainHint = getDomainCategoryHint(hostname);
 
             // --- Step 2: Keyword matching on combined text ---
-            // Score each category by keyword matches
             const scores = {};
             for (const [cat, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
                 let score = 0;
                 for (const kw of keywords) {
-                    // Word-boundary-style matching (supports hyphenated keywords)
                     const regex = new RegExp(`(?:^|[\\s/\\-_.,])${kw.replace(/[-/]/g, '[\\-/]?')}(?:$|[\\s/\\-_.,])`, 'i');
                     if (regex.test(combined)) {
                         score += 1;
-                        // Boost score if keyword appears in the title (more reliable signal)
                         if (title && regex.test(title.toLowerCase())) score += 1;
                     }
                 }
                 if (score > 0) scores[cat] = score;
             }
 
-            // Pick highest scoring category
             let bestCat = '';
             let bestScore = 0;
             for (const [cat, score] of Object.entries(scores)) {
@@ -120,14 +136,13 @@
                 }
             }
 
-            // --- Step 3: Combine domain hint with keyword result ---
             if (bestCat) {
                 result.category = bestCat;
             } else if (domainHint) {
                 result.category = domainHint;
             }
 
-            // --- Step 4: Detect subcategory if clothes ---
+            // --- Step 3: Detect subcategory if clothes ---
             if (result.category === 'clothes') {
                 let bestSub = '';
                 let bestSubScore = 0;
@@ -155,23 +170,24 @@
     }
 
     function getDomainCategoryHint(hostname) {
-        for (const d of BEAUTY_DOMAINS) {
-            if (hostname.includes(d)) return 'cosmetics';
+        for (const d of TECH_DOMAINS) {
+            if (hostname.includes(d)) return 'tech';
+        }
+        for (const d of ACCESSORY_DOMAINS) {
+            if (hostname.includes(d)) return 'accessories';
+        }
+        for (const d of HEALTH_DOMAINS) {
+            if (hostname.includes(d)) return 'health';
         }
         for (const d of BOOK_DOMAINS) {
-            if (hostname.includes(d)) return 'books';
+            if (hostname.includes(d)) return 'misc';
         }
         for (const d of HOME_DOMAINS) {
             if (hostname.includes(d)) return 'home';
         }
-        // Shoe domains overlap with fashion — only hint shoes if URL path also suggests shoes
-        for (const d of SHOE_DOMAINS) {
-            if (hostname.includes(d)) return ''; // Don't assume; let keywords decide
-        }
         for (const d of FASHION_DOMAINS) {
-            if (hostname.includes(d)) return 'clothes'; // Default fashion hint
+            if (hostname.includes(d)) return 'clothes';
         }
-        // Amazon / general retailers — let keywords decide
         return '';
     }
 
@@ -284,8 +300,9 @@
 
     // Show/hide subcategory when category changes
     categorySelect.addEventListener('change', () => {
-        subcategoryGroup.style.display = categorySelect.value === 'clothes' ? 'block' : 'none';
-        if (categorySelect.value !== 'clothes') subcategorySelect.value = '';
+        const isClothes = categorySelect.value === 'clothes';
+        subcategoryGroup.style.display = isClothes ? 'block' : 'none';
+        if (!isClothes) subcategorySelect.value = '';
     });
 
     // --- API Data Sync (Supabase) ---
@@ -1354,7 +1371,8 @@
             if (activeCategory === 'priority') {
                 if (!item.is_priority) return false;
             } else if (activeCategory !== 'all' && activeCategory !== 'received') {
-                if (item.category !== activeCategory) return false;
+                const itemAlias = getCategoryAlias(item.category);
+                if (itemAlias !== activeCategory && item.category !== activeCategory) return false;
             }
             
             // Search filter
