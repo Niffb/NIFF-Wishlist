@@ -1248,19 +1248,21 @@
             <div class="wish-card-placeholder">${placeholderIcon}</div>
           </div>
           <div class="wish-card-body">
-            <div class="wish-card-content">
-              <div class="wish-card-name">${escapeHtml(item.name)}</div>
+            <h3 class="wish-card-name">${escapeHtml(item.name)}</h3>
+            <div class="wish-card-meta">
               <span class="wish-card-category">${CATEGORY_LABELS[item.category] || item.category}</span>
               ${subcatHtml}
+            </div>
+            ${noteHtml}
+            <div class="wish-card-footer">
               ${priceHtml}
-              ${noteHtml}
               <a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer" class="wish-card-url" onclick="event.stopPropagation()">
                 ${displayUrl(item.url)}
               </a>
             </div>
-            <div class="item-actions">
-              ${actionsHtml}
-            </div>
+          </div>
+          <div class="item-actions">
+            ${actionsHtml}
           </div>
         `;
 
