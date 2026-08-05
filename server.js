@@ -11,6 +11,20 @@ app.use(express.json());
 app.use(express.static(__dirname));
 
 // ==========================================
+//  Admin Auth Endpoint (Password protected)
+// ==========================================
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Karamalis1310!';
+
+app.post('/api/login', (req, res) => {
+  const { password } = req.body;
+  if (password === ADMIN_PASSWORD) {
+    res.json({ success: true, token: 'admin-authenticated' });
+  } else {
+    res.status(401).json({ success: false, error: 'Incorrect password' });
+  }
+});
+
+// ==========================================
 //  Helper: browser-like fetch with headers
 // ==========================================
 const BROWSER_HEADERS = {
