@@ -101,11 +101,20 @@ app.get('/api/fetch-page', async (req, res) => {
   }
 
   try {
+    // Parse domain for Referer header
+    let referer = '';
+    try { referer = new URL(targetUrl).origin; } catch (e) {}
+
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 4000);
+    const timeout = setTimeout(() => controller.abort(), 5000);
 
     const response = await fetch(targetUrl, {
-      headers: { ...BROWSER_HEADERS, 'Accept-Encoding': 'gzip, deflate, br' },
+      headers: {
+        ...BROWSER_HEADERS,
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Referer': referer,
+        'DNT': '1',
+      },
       redirect: 'follow',
       signal: controller.signal,
     });
@@ -120,6 +129,20 @@ app.get('/api/fetch-page', async (req, res) => {
     let html = await response.text();
     console.log(`[Proxy] Fetched ${targetUrl} — ${html.length} chars`);
 
+    // --- Detect anti-bot/challenge pages ---
+    const lowerHtml = html.substring(0, 5000).toLowerCase();
+    const isAntiBot = [
+      'checking your browser', 'just a moment', 'ray id', 'cloudflare',
+      'challenge-platform', 'pardon our interruption', 'access denied',
+      'enable javascript', 'please wait', 'bot protection', 'captcha',
+      'security check', 'perimeterx', 'imperva', 'incapsula', 'distil',
+    ].some(p => lowerHtml.includes(p));
+
+    if (isAntiBot) {
+      console.warn(`[Proxy] Anti-bot page detected for ${targetUrl}`);
+      return res.json({ html: '', finalUrl: response.url, antiBot: true });
+    }
+
     // --- Amazon Specific: extract images from JS data structures ---
     if (targetUrl.includes('amazon.')) {
       const amazonImages = extractAmazonImages(html, targetUrl);
@@ -130,7 +153,7 @@ app.get('/api/fetch-page', async (req, res) => {
       }
     }
 
-    res.json({ html, finalUrl: response.url });
+    res.json({ html, finalUrl: response.url, antiBot: false });
   } catch (err) {
     console.error('Fetch page error:', err.message, 'for', targetUrl);
     res.status(500).json({ error: err.message });
