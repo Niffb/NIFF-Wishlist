@@ -1087,18 +1087,7 @@
     }
 
     function getPlaceholderIcon(category) {
-        const icons = {
-            clothes: '👕',
-            jewellery: '💎',
-            shoes: '👟',
-            bags: '👜',
-            cosmetics: '💄',
-            stationery: '✍️',
-            home: '🏠',
-            books: '📖',
-            misc: '✦'
-        };
-        return icons[category] || '✦';
+        return '✦';
     }
 
     function render() {
@@ -1267,7 +1256,7 @@
         // Badges: admin never sees reservation info — only priority
         const badgesHtml = `
           <div class="item-badges">
-            ${item.is_priority ? '<span class="badge-priority">⭐ Priority</span>' : ''}
+            ${item.is_priority ? '<span class="badge-priority">Priority</span>' : ''}
           </div>
         `;
 
