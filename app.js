@@ -195,7 +195,6 @@
     // ==========================================
     const SUPABASE_URL = 'https://teqefehtuesydtwimwqq.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRlcWVmZWh0dWVzeWR0d2ltd3FxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUzNDY2MTMsImV4cCI6MjEwMDkyMjYxM30.JyAVIxqougf8pTfU3RQg2fMx3xgV7qP4V2FGnymDNW0';
-    const ADMIN_PASSWORD = 'Karamalis1310!'; // Change this to your preferred password
 
     // --- DOM References ---
     const grid = document.getElementById('wishlistGrid');
@@ -1522,15 +1521,35 @@
         e.preventDefault();
         const password = authPasswordInput.value.trim();
 
-        if (password === ADMIN_PASSWORD) {
-            currentUser = { email: 'Admin (Hardcoded)', id: 'admin' };
-            localStorage.setItem('wishlist_admin_session', 'true');
-            updateAuthUI();
-            closeAuthModal();
-        } else {
-            authMessage.textContent = 'Incorrect password.';
-            authMessage.className = 'auth-message error';
-            authMessage.style.display = 'block';
+        try {
+            const res = await fetch('/api/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password })
+            });
+
+            if (res.ok) {
+                currentUser = { email: 'Admin', id: 'admin' };
+                localStorage.setItem('wishlist_admin_session', 'true');
+                updateAuthUI();
+                closeAuthModal();
+            } else {
+                authMessage.textContent = 'Incorrect password.';
+                authMessage.className = 'auth-message error';
+                authMessage.style.display = 'block';
+            }
+        } catch (err) {
+            // Fallback for static hosts (e.g. GitHub Pages) without backend node process
+            if (password === 'Karamalis1310!') {
+                currentUser = { email: 'Admin', id: 'admin' };
+                localStorage.setItem('wishlist_admin_session', 'true');
+                updateAuthUI();
+                closeAuthModal();
+            } else {
+                authMessage.textContent = 'Incorrect password.';
+                authMessage.className = 'auth-message error';
+                authMessage.style.display = 'block';
+            }
         }
     });
 
@@ -1673,16 +1692,31 @@
         }, 4 * 60 * 1000);
     }
 
+    async function syncItems() {
+        try {
+            const latestItems = await loadItems();
+            // Only update DOM if items actually changed to avoid jarring re-renders
+            if (JSON.stringify(latestItems) !== JSON.stringify(items)) {
+                items = latestItems;
+                render();
+            }
+        } catch (e) {
+            console.warn('[Sync] Background sync failed:', e);
+        }
+    }
+
     async function init() {
         items = await loadItems();
         render();
 
         if (localStorage.getItem('wishlist_admin_session') === 'true') {
-            currentUser = { email: 'Admin (Hardcoded)', id: 'admin' };
+            currentUser = { email: 'Admin', id: 'admin' };
             updateAuthUI();
         }
 
         startSupabaseKeepalive();
+        // Auto-sync items every 10 seconds for real-time multi-device updates
+        setInterval(syncItems, 10000);
     }
 
     init();
