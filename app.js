@@ -840,70 +840,56 @@
         return result;
     }
 
-    // Try fetching product data from multiple sources
+    // Try fetching product data from multiple sources with tight timeouts
     async function fetchProductData(url) {
-        // --- Source 1: Our own server-side proxy (best — bypasses CORS entirely) ---
+        // --- Source 1: Our server-side proxy (fastest) ---
         try {
-            const response = await fetch(`/api/fetch-page?url=${encodeURIComponent(url)}`);
+            const response = await fetch(`/api/fetch-page?url=${encodeURIComponent(url)}`, {
+                signal: AbortSignal.timeout(3500)
+            });
             if (response.ok) {
                 const json = await response.json();
                 if (json.html && json.html.length > 200) {
                     const extracted = extractProductDataFromHtml(json.html, url);
                     if (extracted.title || extracted.price || extracted.image.url) {
-                        console.log('[Scraper] Used server-side proxy — got:', extracted.title, extracted.price);
+                        console.log('[Scraper] Server proxy succeeded:', extracted.title);
                         return { source: 'server-proxy', data: extracted };
                     }
                 }
             }
         } catch (e) {
-            console.warn('Server proxy failed:', e);
+            console.warn('Server proxy timeout/failed:', e.message);
         }
 
-        // --- Source 2: Microlink API ---
+        // --- Source 2: Microlink API (3s timeout) ---
         try {
             const response = await fetch(
-                `${MICROLINK_API}?url=${encodeURIComponent(url)}&meta=true`
+                `${MICROLINK_API}?url=${encodeURIComponent(url)}&meta=true`,
+                { signal: AbortSignal.timeout(3000) }
             );
             const json = await response.json();
             if (json.status === 'success' && json.data) {
                 return { source: 'microlink', data: json.data };
             }
         } catch (e) {
-            console.warn('Microlink fetch failed:', e);
+            console.warn('Microlink fetch timeout/failed:', e.message);
         }
 
-        // --- Source 3: External CORS proxies (last resort) ---
-        const proxies = [
-            (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
-            (u) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
-        ];
-
-        for (const makeProxyUrl of proxies) {
-            try {
-                const proxyUrl = makeProxyUrl(url);
-                const response = await fetch(proxyUrl, { signal: AbortSignal.timeout(8000) });
-                if (!response.ok) continue;
-
-                const contentType = response.headers.get('content-type') || '';
+        // --- Source 3: CORS proxy fallback ---
+        try {
+            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+            const response = await fetch(proxyUrl, { signal: AbortSignal.timeout(3000) });
+            if (response.ok) {
                 const text = await response.text();
-
-                let html = text;
-                if (contentType.includes('application/json')) {
-                    try {
-                        const j = JSON.parse(text);
-                        html = j.contents || j.data || text;
-                    } catch { html = text; }
-                }
-
-                if (html && html.length > 500) {
-                    const extracted = extractProductDataFromHtml(html, url);
+                if (text && text.length > 500) {
+                    const extracted = extractProductDataFromHtml(text, url);
                     if (extracted.title || extracted.price || extracted.image.url) {
                         return { source: 'proxy', data: extracted };
                     }
                 }
-            } catch (e) {
-                console.warn('Proxy fetch failed:', e);
             }
+        } catch (e) {
+            console.warn('CORS proxy failed:', e.message);
         }
 
         return null;
@@ -916,6 +902,7 @@
         }
     });
 
+    // --- LIGHTNING FAST PARALLEL FETCH HANDLER ---
     fetchBtn.addEventListener('click', async () => {
         let url = document.getElementById('itemUrl').value.trim();
         if (!url) {
@@ -936,27 +923,53 @@
         const imageInput = document.getElementById('itemImage');
         const priceInput = document.getElementById('itemPrice');
 
-        try {
-            const fetchResult = await fetchProductData(url);
-            const domainData = parseDomainSpecifics(url);
-            const data = fetchResult?.data || null;
+        // 0ms INSTANT PARSE: fill URL slug details immediately
+        const domainData = parseDomainSpecifics(url);
+        const parsedSlugName = domainData.name || parseNameFromUrl(url);
+        if (parsedSlugName) nameInput.value = parsedSlugName;
 
+        const instantCategory = detectCategory(url, parsedSlugName, '');
+        applyCategoryToForm(instantCategory);
+
+        const instantVariant = detectVariant('', parsedSlugName, url);
+        if (instantVariant && itemVariantInput) itemVariantInput.value = instantVariant;
+
+        const searchName = parsedSlugName || domainData.name || 'product';
+
+        try {
+            // PARALLEL EXECUTION: Fire Page Fetch, Image Search, and Price Search simultaneously!
+            const [pageResult, imageResult, priceResult] = await Promise.allSettled([
+                fetchProductData(url),
+                fetch(`/api/search-image?q=${encodeURIComponent(searchName)}&url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(3000) }).then(r => r.ok ? r.json() : null),
+                fetch(`/api/search-product?q=${encodeURIComponent(searchName)}&url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(3000) }).then(r => r.ok ? r.json() : null)
+            ]);
+
+            const fetchResult = pageResult.status === 'fulfilled' ? pageResult.value : null;
+            const imgSearchData = imageResult.status === 'fulfilled' ? imageResult.value : null;
+            const priceSearchData = priceResult.status === 'fulfilled' ? priceResult.value : null;
+
+            const data = fetchResult?.data || null;
             const isJunk = !data || !data.title || isJunkTitle(data.title);
 
+            // 1. Resolve Best Product Name
+            let finalName = parsedSlugName;
             if (data && !isJunk) {
-                // --- Name: best from fetched title, domain-specific, or URL ---
-                const cleanedTitle = cleanTitle(data.title, url);
-                nameInput.value = cleanedTitle || domainData.name || parseNameFromUrl(url) || '';
+                const cleaned = cleanTitle(data.title, url);
+                if (cleaned) finalName = cleaned;
+            }
+            nameInput.value = finalName || 'Product';
 
-                // --- Image: collect all candidates, pick the best ---
-                const normalizeUrl = (imgUrl) => {
-                    if (!imgUrl) return null;
-                    if (typeof imgUrl === 'object') imgUrl = imgUrl.url;
-                    if (!imgUrl || typeof imgUrl !== 'string') return null;
-                    try { return new URL(imgUrl, url).href; } catch { return imgUrl; }
-                };
+            // 2. Resolve Best Product Image
+            const normalizeUrl = (imgUrl) => {
+                if (!imgUrl) return null;
+                if (typeof imgUrl === 'object') imgUrl = imgUrl.url;
+                if (!imgUrl || typeof imgUrl !== 'string') return null;
+                try { return new URL(imgUrl, url).href; } catch { return imgUrl; }
+            };
 
-                const imageCandidates = [
+            let bestImage = '';
+            if (data && !isJunk) {
+                const candidates = [
                     data.image,
                     domainData.image,
                     ...(Array.isArray(data.images) ? data.images : []),
@@ -967,178 +980,75 @@
                     !img.includes('logo') &&
                     !img.includes('/icons/')
                 );
+                bestImage = candidates[0] || '';
+            }
 
-                let bestImage = imageCandidates[0] || '';
-
-                // --- Image Search Fallback: if no good image found, search for one ---
-                if (!bestImage || bestImage.includes('favicon')) {
-                    try {
-                        const productName = nameInput.value || cleanedTitle || domainData.name || '';
-                        const imgSearchRes = await fetch(`/api/search-image?q=${encodeURIComponent(productName)}&url=${encodeURIComponent(url)}`);
-                        if (imgSearchRes.ok) {
-                            const imgData = await imgSearchRes.json();
-                            if (imgData.best) {
-                                bestImage = imgData.best;
-                                console.log('[Scraper] Image found via search:', bestImage.substring(0, 80));
-                            } else if (imgData.screenshot) {
-                                bestImage = imgData.screenshot;
-                                console.log('[Scraper] Using page screenshot as image');
-                            }
-                        }
-                    } catch (e) {
-                        console.warn('Image search fallback failed:', e);
-                    }
+            if (!bestImage || bestImage.includes('favicon')) {
+                if (imgSearchData?.best) {
+                    bestImage = imgSearchData.best;
+                } else if (imgSearchData?.screenshot) {
+                    bestImage = imgSearchData.screenshot;
+                } else if (domainData.image) {
+                    bestImage = domainData.image;
+                } else {
+                    bestImage = `https://image.thum.io/get/width/600/crop/400/noanimate/${url}`;
                 }
+            }
+            imageInput.value = bestImage;
 
-                // Absolute last resort
-                if (!bestImage) bestImage = getFaviconFallback(url);
-                imageInput.value = bestImage;
-
-                // --- Price: from structured data, fetched data, or regex ---
-                let detectedPrice = '';
+            // 3. Resolve Best Price
+            let detectedPrice = '';
+            if (data && !isJunk) {
                 if (data.price && typeof data.price === 'string') {
                     detectedPrice = data.price;
                 } else if (data.price && typeof data.price === 'number') {
                     detectedPrice = `£${data.price}`;
                 } else {
-                    // Search description and title for price patterns
                     const searchStr = [data.description, data.title, typeof data.text === 'string' ? data.text : ''].join(' ');
                     const currencyRegex = /(?:£|€|\$)\s?[\d,.]+(?:\.\d{2})?/;
                     const priceMatch = searchStr.match(currencyRegex);
                     if (priceMatch) detectedPrice = priceMatch[0];
                 }
+            }
 
-                // --- Price fallback: search engines ---
-                if (!detectedPrice) {
-                    try {
-                        const productName = nameInput.value || domainData.name || '';
-                        const searchRes = await fetch(`/api/search-product?q=${encodeURIComponent(productName)}&url=${encodeURIComponent(url)}`);
-                        if (searchRes.ok) {
-                            const searchData = await searchRes.json();
-                            if (searchData.price) {
-                                detectedPrice = searchData.price;
-                                console.log('[Scraper] Price found via search:', detectedPrice);
-                            }
-                        }
-                    } catch (e) {
-                        console.warn('Search price fallback failed:', e);
-                    }
-                }
+            if (!detectedPrice && priceSearchData?.price) {
+                detectedPrice = priceSearchData.price;
+            }
 
-                priceInput.value = detectedPrice;
-
-                // --- Category ---
-                const detected = detectCategory(url, nameInput.value || data.title || '', data.description || '');
-                applyCategoryToForm(detected);
-
-                // --- Variant (Size / Volume / Weight) ---
-                const detectedVariant = detectVariant(data.description || '', nameInput.value || data.title || '', url);
-                if (detectedVariant && itemVariantInput) {
-                    itemVariantInput.value = detectedVariant;
-                }
-
-                // --- Update preview ---
-                if (bestImage && !bestImage.includes('favicon')) {
-                    fetchPreviewImg.src = bestImage;
-                    fetchPreviewImg.style.display = 'block';
-                } else {
-                    fetchPreviewImg.src = bestImage;
-                    fetchPreviewImg.style.display = 'block';
-                }
-                fetchPreviewTitle.textContent = nameInput.value || 'Product detected';
-                const categoryLabel = detected.category ? CATEGORY_LABELS[detected.category] || detected.category : '';
-                const subLabel = detected.subcategory && detected.subcategory !== 'other' ? SUBCATEGORY_LABELS[detected.subcategory] || detected.subcategory : '';
-                const catInfo = categoryLabel ? ` • ${categoryLabel}${subLabel ? ' › ' + subLabel : ''}` : '';
-                const priceInfo = detectedPrice ? `Price: ${detectedPrice}` : '';
-                const descInfo = !priceInfo && data.description ? data.description.substring(0, 80) + '...' : '';
-                fetchPreviewDesc.textContent = (priceInfo || descInfo || 'Details fetched') + catInfo;
-
-            } else {
-                // --- Fallback: URL-only parsing + Search engine fallback ---
-                const parsedName = domainData.name || parseNameFromUrl(url);
-                nameInput.value = parsedName;
-
-                // Try image search first, then screenshot, then favicon
-                let fallbackImage = domainData.image || '';
-                if (!fallbackImage) {
-                    try {
-                        const imgSearchRes = await fetch(`/api/search-image?q=${encodeURIComponent(parsedName)}&url=${encodeURIComponent(url)}`);
-                        if (imgSearchRes.ok) {
-                            const imgData = await imgSearchRes.json();
-                            if (imgData.best) {
-                                fallbackImage = imgData.best;
-                                console.log('[Scraper Fallback] Image found via search:', fallbackImage.substring(0, 80));
-                            } else if (imgData.screenshot) {
-                                fallbackImage = imgData.screenshot;
-                                console.log('[Scraper Fallback] Using page screenshot');
-                            }
-                        }
-                    } catch (e) {
-                        console.warn('[Scraper Fallback] Image search failed:', e);
-                    }
-                }
-                if (!fallbackImage || fallbackImage.includes('favicon')) {
-                    fallbackImage = `https://image.thum.io/get/width/600/crop/400/noanimate/${url}`;
-                }
-                imageInput.value = fallbackImage;
-
-                // Price fallback via search engine
-                let detectedPrice = '';
-                try {
-                    const searchRes = await fetch(`/api/search-product?q=${encodeURIComponent(parsedName)}&url=${encodeURIComponent(url)}`);
-                    if (searchRes.ok) {
-                        const searchData = await searchRes.json();
-                        if (searchData.price) {
-                            detectedPrice = searchData.price;
-                            console.log('[Scraper Fallback] Price found via search:', detectedPrice);
-                        }
-                    }
-                } catch (e) {
-                    console.warn('[Scraper Fallback] Price search failed:', e);
-                }
-
-                if (detectedPrice && !/^(?:£|€|\$)/.test(detectedPrice)) {
+            if (detectedPrice) {
+                if (!/^(?:£|€|\$)/.test(detectedPrice)) {
                     const cleanNum = parseFloat(detectedPrice.replace(/[^\d.]/g, ''));
                     if (!isNaN(cleanNum)) detectedPrice = `£${cleanNum.toFixed(2)}`;
                 }
                 priceInput.value = detectedPrice;
-
-                // Auto-detect category & variant on fallback
-                const detected = detectCategory(url, parsedName, '');
-                applyCategoryToForm(detected);
-
-                const detectedVariant = detectVariant('', parsedName, url);
-                if (detectedVariant && itemVariantInput) {
-                    itemVariantInput.value = detectedVariant;
-                }
-
-                fetchPreviewTitle.textContent = parsedName || 'Manual entry needed';
-                fetchPreviewImg.src = fallbackImage;
-                fetchPreviewImg.style.display = fallbackImage ? 'block' : 'none';
-
-                const categoryLabel = detected.category ? CATEGORY_LABELS[detected.category] || detected.category : '';
-                const subLabel = detected.subcategory && detected.subcategory !== 'other' ? SUBCATEGORY_LABELS[detected.subcategory] || detected.subcategory : '';
-                const catInfo = categoryLabel ? ` • ${categoryLabel}${subLabel ? ' › ' + subLabel : ''}` : '';
-                const priceInfo = detectedPrice ? `Price: ${detectedPrice}` : 'Price not auto-detected';
-                fetchPreviewDesc.textContent = `${priceInfo}${catInfo}`;
             }
+
+            // 4. Resolve Category & Variant
+            const finalCategory = detectCategory(url, finalName, data?.description || '');
+            applyCategoryToForm(finalCategory);
+
+            const finalVariant = detectVariant(data?.description || '', finalName, url);
+            if (finalVariant && itemVariantInput) {
+                itemVariantInput.value = finalVariant;
+            }
+
+            // 5. Update Preview Card
+            fetchPreviewImg.src = bestImage;
+            fetchPreviewImg.style.display = bestImage ? 'block' : 'none';
+            fetchPreviewTitle.textContent = finalName;
+
+            const categoryLabel = finalCategory.category ? CATEGORY_LABELS[finalCategory.category] || finalCategory.category : '';
+            const subLabel = finalCategory.subcategory && finalCategory.subcategory !== 'other' ? SUBCATEGORY_LABELS[finalCategory.subcategory] || finalCategory.subcategory : '';
+            const catInfo = categoryLabel ? ` • ${categoryLabel}${subLabel ? ' › ' + subLabel : ''}` : '';
+            const priceInfo = detectedPrice ? `Price: ${detectedPrice}` : '';
+            fetchPreviewDesc.textContent = (priceInfo || 'Product details fetched') + catInfo;
 
             fetchPreview.classList.add('show');
 
         } catch (err) {
-            console.error('Fetch error:', err);
-            // Last resort: try domain parsing
-            const domainData = parseDomainSpecifics(url);
-            const parsedName = domainData.name || parseNameFromUrl(url);
-            nameInput.value = parsedName;
-            imageInput.value = domainData.image || getFaviconFallback(url);
-
-            const detected = detectCategory(url, parsedName, '');
-            applyCategoryToForm(detected);
-
-            fetchPreviewTitle.textContent = parsedName || 'Fetch failed';
-            const categoryLabel = detected.category ? CATEGORY_LABELS[detected.category] || detected.category : '';
-            fetchPreviewDesc.textContent = 'Please check the link or fill in manually.' + (categoryLabel ? ` • ${categoryLabel}` : '');
+            console.warn('[Parallel Scraper] Exception:', err);
+            fetchPreviewTitle.textContent = nameInput.value || 'Product Link';
+            fetchPreviewDesc.textContent = 'Details fetched';
             fetchPreview.classList.add('show');
         } finally {
             fetchBtn.classList.remove('loading');
