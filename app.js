@@ -1627,6 +1627,9 @@
     authForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const password = authPasswordInput.value.trim();
+        const HARDCODED_ADMIN_PASS = 'Karamalis1310!';
+
+        let authenticated = false;
 
         try {
             const res = await fetch('/api/login', {
@@ -1636,27 +1639,32 @@
             });
 
             if (res.ok) {
-                currentUser = { email: 'Admin', id: 'admin' };
-                localStorage.setItem('wishlist_admin_session', 'true');
-                updateAuthUI();
-                closeAuthModal();
+                const data = await res.json();
+                if (data.success) authenticated = true;
             } else {
-                authMessage.textContent = 'Incorrect password.';
-                authMessage.className = 'auth-message error';
-                authMessage.style.display = 'block';
+                // If API endpoint returns 404/405 on static hosting (e.g. GitHub Pages)
+                if (password === HARDCODED_ADMIN_PASS) {
+                    authenticated = true;
+                }
             }
         } catch (err) {
-            // Fallback for static hosts (e.g. GitHub Pages) without backend node process
-            if (password === 'Karamalis1310!') {
-                currentUser = { email: 'Admin', id: 'admin' };
-                localStorage.setItem('wishlist_admin_session', 'true');
-                updateAuthUI();
-                closeAuthModal();
-            } else {
-                authMessage.textContent = 'Incorrect password.';
-                authMessage.className = 'auth-message error';
-                authMessage.style.display = 'block';
+            // Network error fallback
+            if (password === HARDCODED_ADMIN_PASS) {
+                authenticated = true;
             }
+        }
+
+        if (authenticated) {
+            currentUser = { email: 'Admin', id: 'admin' };
+            localStorage.setItem('wishlist_admin_session', 'true');
+            updateAuthUI();
+            closeAuthModal();
+            render();
+            showToast('Logged in as Admin', false);
+        } else {
+            authMessage.textContent = 'Incorrect password.';
+            authMessage.className = 'auth-message error';
+            authMessage.style.display = 'block';
         }
     });
 
