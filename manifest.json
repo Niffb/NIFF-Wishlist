@@ -1,6 +1,6 @@
 {
-  "name": "NIFF Wishlist",
-  "short_name": "NIFF",
+  "name": "NIFF's WISHLIST",
+  "short_name": "NIFF's WISHLIST",
   "description": "A clean, minimal wishlist to save and manage product links across categories.",
   "start_url": "/",
   "display": "standalone",

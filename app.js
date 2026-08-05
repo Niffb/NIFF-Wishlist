@@ -1561,8 +1561,8 @@
     if (shareBtn) {
         shareBtn.addEventListener('click', async () => {
             const shareData = {
-                title: 'NIFF Wishlist',
-                text: 'Check out my wishlist on NIFF!',
+                title: "NIFF's WISHLIST",
+                text: "Check out NIFF's WISHLIST!",
                 url: window.location.href
             };
             if (navigator.share) {
