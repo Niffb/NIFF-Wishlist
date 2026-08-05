@@ -102,7 +102,7 @@ app.get('/api/fetch-page', async (req, res) => {
 
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
+    const timeout = setTimeout(() => controller.abort(), 4000);
 
     const response = await fetch(targetUrl, {
       headers: { ...BROWSER_HEADERS, 'Accept-Encoding': 'gzip, deflate, br' },
