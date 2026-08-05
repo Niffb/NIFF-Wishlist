@@ -495,6 +495,24 @@
         // 0. Strip anything after ? (query params leaking into titles)
         cleaned = cleaned.split('?')[0];
 
+        // 0b. Strip symbols: ™ ® © ° ‡ † ‹ › « » and other non-product characters
+        cleaned = cleaned.replace(/[™®©°‡†‹›«»✓✗★☆♦♣♠♥●▪▶◀◆■□▲△▼▽⬆⬇⬅➡→←↑↓§¶±≥≤≠≈∞∑∏∆√∫…·•‖¡¿⁰¹²³⁴⁵⁶⁷⁸⁹₀₁₂₃₄₅₆₇₈₉]/g, '');
+
+        // 0c. Strip HTML entities that leaked through
+        cleaned = cleaned.replace(/&(?:amp|lt|gt|quot|apos|nbsp|#\d+|#x[a-fA-F0-9]+);/g, ' ');
+
+        // 0d. Strip UTM / tracking params that leaked into title
+        cleaned = cleaned.replace(/utm_[a-z_]+=\S*/gi, '');
+
+        // 0e. Strip encoded characters (%20 etc.)
+        try { cleaned = decodeURIComponent(cleaned); } catch (e) {}
+
+        // 0f. Strip remaining special chars that aren't punctuation
+        cleaned = cleaned.replace(/[^\w\s\-'.,&:()\/]/g, ' ');
+
+        // 0g. Collapse multiple spaces
+        cleaned = cleaned.replace(/\s{2,}/g, ' ').trim();
+
         // 1. Remove separators and what follows them if they look like site names
         const separators = [' | ', ' - ', ' – ', ' — ', ' : '];
         for (const sep of separators) {
@@ -503,7 +521,7 @@
                 const lastPart = parts[parts.length - 1].toLowerCase().trim();
                 const firstPart = parts[0].toLowerCase().trim();
                 // Common generic site words
-                const genericWords = ['store', 'official', 'website', 'online', 'shop', 'amazon', 'etsy', 'ebay', 'asos', 'zara', 'h&m', 'abercrombie', 'hollister', 'men\'s', 'women\'s', 'clearance', 'sale', 'new arrivals'];
+                const genericWords = ['store', 'official', 'website', 'online', 'shop', 'amazon', 'etsy', 'ebay', 'asos', 'zara', 'h&m', 'abercrombie', 'hollister', 'men\'s', 'women\'s', 'clearance', 'sale', 'new arrivals', 'victorinox', 'sephora', 'boots', 'nike', 'adidas', 'home', 'buy'];
                 
                 if (genericWords.some(word => lastPart.includes(word)) || 
                     (url && url.toLowerCase().includes(lastPart.replace(/\s/g, '')))) {
@@ -518,8 +536,9 @@
 
         cleaned = cleaned.trim();
 
-        // 1b. Strip trailing product IDs (numeric strings like "1005", "617432")
-        cleaned = cleaned.replace(/\s+\d{3,}$/, '').trim();
+        // 1b. Strip trailing product IDs (numeric strings like "1005", "617432") and product codes
+        cleaned = cleaned.replace(/\s+[\d.]{3,}$/, '').trim();
+        cleaned = cleaned.replace(/\s+[A-Z0-9]{5,}\.\d+[A-Z]*$/i, '').trim();
 
         // 2. If it's a long hyphenated string (slug) or contains path segments
         if (cleaned.includes('/') || (cleaned.includes('-') && !cleaned.includes(' '))) {
@@ -559,22 +578,53 @@
     function parseNameFromUrl(url) {
         try {
             const u = new URL(url);
-            const pathParts = u.pathname.split('/').filter(Boolean);
-            // Find the most descriptive part (longest, non-numeric segment)
-            let best = '';
-            for (let part of pathParts) {
-                // Strip query params that may have leaked
-                part = part.split('?')[0];
-                // Skip purely numeric parts (IDs)
-                if (/^\d+$/.test(part)) continue;
-                // Skip short numeric-heavy parts (product codes like "617432109")
-                if (/^\d{4,}/.test(part)) continue;
-                // Skip common path segments
-                if (['uk', 'us', 'en', 'gb', 'eu', 'listing', 'product', 'products', 'item', 'items', 'shop', 'dp', 'p', 'prd', 'category', 'collections', 'c', 'men', 'women', 'mens', 'womens', 'kids', 'sale', 'clearance', 'new'].includes(part.toLowerCase())) continue;
-                if (part.length > best.length) best = part;
+            let pathParts = u.pathname.split('/').filter(Boolean);
+
+            // Decode each segment and strip ™®© symbols
+            pathParts = pathParts.map(p => {
+                try { p = decodeURIComponent(p); } catch (e) {}
+                return p.replace(/[™®©]/g, '');
+            });
+
+            // Common skip words (language, category, generic path segments)
+            const skipWords = new Set(['uk', 'us', 'en', 'gb', 'eu', 'en-gb', 'en-us', 'de', 'fr', 'es', 'it', 'listing', 'product', 'products', 'item', 'items', 'shop', 'dp', 'p', 'prd', 'category', 'categories', 'collections', 'c', 'men', 'women', 'mens', 'womens', 'kids', 'sale', 'clearance', 'new', 'essentials', 'and-tools', 'tools', 'accessories']);
+
+            // Strategy 1: Find the slug right BEFORE a product code segment (/p/, /dp/, /prd/)
+            const codeIndicators = ['p', 'dp', 'prd', 'pid', 'sku'];
+            for (let i = 0; i < pathParts.length; i++) {
+                if (codeIndicators.includes(pathParts[i].toLowerCase()) && i > 0) {
+                    const candidate = pathParts[i - 1];
+                    if (candidate.length > 3 && !/^\d+$/.test(candidate)) {
+                        return candidate
+                            .replace(/[-_]+/g, ' ')
+                            .replace(/\s+\d{4,}$/, '')
+                            .replace(/\b\w/g, c => c.toUpperCase())
+                            .trim();
+                    }
+                }
             }
+
+            // Strategy 2: Find the most descriptive slug (longest non-generic, non-numeric)
+            let best = '';
+            let bestScore = 0;
+            for (let part of pathParts) {
+                part = part.split('?')[0];
+                const lower = part.toLowerCase();
+                if (/^\d+$/.test(part)) continue;
+                if (/^\d{4,}/.test(part)) continue;
+                if (/^[A-Z0-9]{3,}\.\d/.test(part)) continue; // Product codes like 0.6223.2PIS
+                if (skipWords.has(lower)) continue;
+                if (part.length < 3) continue;
+
+                // Score: prefer longer slugs with hyphens (more descriptive)
+                const score = part.length + (part.includes('-') ? 10 : 0);
+                if (score > bestScore) {
+                    best = part;
+                    bestScore = score;
+                }
+            }
+
             if (best) {
-                // Strip trailing numeric product IDs from slug
                 best = best.replace(/-\d{4,}$/, '');
                 return best
                     .replace(/[-_]+/g, ' ')
