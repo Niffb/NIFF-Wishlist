@@ -984,15 +984,15 @@
             }
 
             if (!bestImage || bestImage.includes('favicon')) {
+                // Use search engine product images — NEVER page screenshots
                 if (imgSearchData?.best) {
                     bestImage = imgSearchData.best;
-                } else if (imgSearchData?.screenshot) {
-                    bestImage = imgSearchData.screenshot;
+                } else if (imgSearchData?.images?.length > 0) {
+                    bestImage = imgSearchData.images[0];
                 } else if (domainData.image) {
                     bestImage = domainData.image;
-                } else {
-                    bestImage = `https://image.thum.io/get/width/600/crop/400/noanimate/${url}`;
                 }
+                // No fallback to thum.io — a missing image is better than a page screenshot
             }
             imageInput.value = bestImage;
 
