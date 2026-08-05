@@ -90,6 +90,7 @@ body {
 }
 
 .btn-auth,
+.btn-share,
 .btn-logout {
   font-family: var(--font-body);
   font-size: 0.75rem;
@@ -100,6 +101,17 @@ body {
   border-radius: 100px;
   cursor: pointer;
   transition: all var(--transition);
+}
+
+.btn-share {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.btn-share:hover {
+  border-color: var(--text);
+  background: #f4f4f5;
 }
 
 .btn-auth {
@@ -353,6 +365,18 @@ body {
   color: var(--text-tertiary);
 }
 
+.wish-card-variant {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: #2563eb;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  padding: 0.12rem 0.45rem;
+  border-radius: 100px;
+  white-space: nowrap;
+}
+
 .subcategory-header {
   grid-column: 1 / -1;
   font-family: var(--font-body);
@@ -422,7 +446,9 @@ body {
 }
 
 .btn-delete,
-.btn-edit {
+.btn-edit,
+.btn-received,
+.btn-unarchive {
   width: 30px;
   height: 30px;
   border-radius: 50%;
@@ -448,6 +474,18 @@ body {
   background: var(--text);
   color: var(--accent-text);
   border-color: var(--text);
+}
+
+.btn-received:hover {
+  background: #dcfce7;
+  color: #16a34a;
+  border-color: #86efac;
+}
+
+.btn-unarchive:hover {
+  background: #f3f4f6;
+  color: #1f2937;
+  border-color: #d1d5db;
 }
 
 /* --- Sort Dropdown --- */
@@ -1301,6 +1339,13 @@ body.is-authenticated .site-header {
   margin-bottom: 1.5rem;
 }
 
+.claim-popup-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  align-items: center;
+}
+
 .claim-popup-close {
   font-family: var(--font-body);
   font-size: 0.85rem;
@@ -1314,10 +1359,26 @@ body.is-authenticated .site-header {
   border-radius: 100px;
   cursor: pointer;
   transition: all var(--transition);
+  width: 100%;
 }
 .claim-popup-close:hover {
   background: #333;
-  transform: scale(1.03);
+  transform: scale(1.02);
+}
+
+.btn-unclaim-link {
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  color: var(--text-tertiary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0.25rem 0.5rem;
+  transition: color var(--transition);
+}
+.btn-unclaim-link:hover {
+  color: #dc2626;
 }
 
 /* Success variant */

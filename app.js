@@ -196,6 +196,37 @@
     const SUPABASE_URL = 'https://teqefehtuesydtwimwqq.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRlcWVmZWh0dWVzeWR0d2ltd3FxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUzNDY2MTMsImV4cCI6MjEwMDkyMjYxM30.JyAVIxqougf8pTfU3RQg2fMx3xgV7qP4V2FGnymDNW0';
 
+    /**
+     * Auto-detect Volume / Weight / Quantity / Size from text metadata.
+     */
+    function detectVariant(text = '', title = '', url = '') {
+        const combined = `${title} ${text} ${url}`.toLowerCase();
+        
+        // 1. Volume (e.g. 50ml, 100 ml, 3.4 fl oz, 1L)
+        const volumeMatch = combined.match(/\b(\d+(?:\.\d+)?\s*(?:ml|l|fl\.?\s*oz|fluid\s*oz))\b/i);
+        if (volumeMatch) {
+            let v = volumeMatch[1].replace(/\s+/g, '');
+            if (/fl\.?oz|fluid/i.test(v)) return v.replace(/fl\.?oz|fluidoz/i, ' fl oz');
+            if (/ml/i.test(v)) return v.replace(/ml/i, 'ml');
+            if (/^(\d+)l$/i.test(v)) return v.replace(/l$/i, 'L');
+            return v;
+        }
+        
+        // 2. Weight (e.g. 100g, 250 g, 1kg, 500g)
+        const weightMatch = combined.match(/\b(\d+(?:\.\d+)?\s*(?:g|kg|lbs?))\b/i);
+        if (weightMatch) {
+            return weightMatch[1].replace(/\s+/g, '').toLowerCase();
+        }
+        
+        // 3. Packs / Sets (e.g. Pack of 3, 3 Pack, Set of 2)
+        const packMatch = combined.match(/\b(pack\s+of\s+\d+|\d+\s*pack|set\s+of\s+\d+)\b/i);
+        if (packMatch) {
+            return packMatch[1].replace(/\b\w/g, c => c.toUpperCase());
+        }
+
+        return '';
+    }
+
     // --- DOM References ---
     const grid = document.getElementById('wishlistGrid');
     const emptyState = document.getElementById('emptyState');
@@ -219,6 +250,8 @@
     const searchInput = document.getElementById('searchInput');
     const priceFilterSelect = document.getElementById('priceFilterSelect');
     const itemPriorityCheckbox = document.getElementById('itemPriority');
+    const itemVariantInput = document.getElementById('itemVariant');
+    const shareBtn = document.getElementById('shareBtn');
 
     // Auth DOM
     const authBtn = document.getElementById('authBtn');
@@ -924,6 +957,12 @@
                 const detected = detectCategory(url, nameInput.value || data.title || '', data.description || '');
                 applyCategoryToForm(detected);
 
+                // --- Variant (Size / Volume / Weight) ---
+                const detectedVariant = detectVariant(data.description || '', nameInput.value || data.title || '', url);
+                if (detectedVariant && itemVariantInput) {
+                    itemVariantInput.value = detectedVariant;
+                }
+
                 // --- Update preview ---
                 if (bestImage && !bestImage.includes('favicon')) {
                     fetchPreviewImg.src = bestImage;
@@ -1068,8 +1107,19 @@
 
     function render() {
         let filtered = items.filter(item => {
-            // Category filter
-            if (activeCategory !== 'all' && item.category !== activeCategory) return false;
+            // Received tab vs active wishlist
+            if (activeCategory === 'received') {
+                if (!item.is_received) return false;
+            } else {
+                if (item.is_received) return false;
+            }
+
+            // Priority tab vs category tabs
+            if (activeCategory === 'priority') {
+                if (!item.is_priority) return false;
+            } else if (activeCategory !== 'all' && activeCategory !== 'received') {
+                if (item.category !== activeCategory) return false;
+            }
             
             // Search filter
             if (currentSearch) {
@@ -1077,7 +1127,8 @@
                 const nameMatch = (item.name || '').toLowerCase().includes(searchLower);
                 const urlMatch = (item.url || '').toLowerCase().includes(searchLower);
                 const noteMatch = (item.note || '').toLowerCase().includes(searchLower);
-                if (!nameMatch && !urlMatch && !noteMatch) return false;
+                const variantMatch = (item.variant || '').toLowerCase().includes(searchLower);
+                if (!nameMatch && !urlMatch && !noteMatch && !variantMatch) return false;
             }
             
             // Price filter
@@ -1213,6 +1264,9 @@
         const subcatHtml = item.subcategory && SUBCATEGORY_LABELS[item.subcategory]
             ? `<span class="wish-card-subcategory">${SUBCATEGORY_LABELS[item.subcategory]}</span>`
             : '';
+        const variantHtml = item.variant
+            ? `<span class="wish-card-variant">${escapeHtml(item.variant)}</span>`
+            : '';
 
         // Badges: admin never sees reservation info — only priority
         const badgesHtml = `
@@ -1224,9 +1278,10 @@
         // Action buttons differ by role
         let actionsHtml = '';
         if (currentUser) {
-            // Admin: edit + delete only, no reservation info at all
+            // Admin: copy, mark received/unarchive, edit, delete
             actionsHtml = `
               <button class="btn-copy btn-icon" data-url="${escapeHtml(item.url)}" aria-label="Copy Link" title="Copy Link" style="font-size: 14px;">🔗</button>
+              <button class="${item.is_received ? 'btn-unarchive' : 'btn-received'}" data-id="${item.id}" aria-label="${item.is_received ? 'Move back to wishlist' : 'Mark as received'}" title="${item.is_received ? 'Move back to wishlist' : 'Mark as received'}">${item.is_received ? '↩' : '✓'}</button>
               <button class="btn-edit" data-id="${item.id}" aria-label="Edit item">✎</button>
               <button class="btn-delete" data-id="${item.id}" aria-label="Delete item">&times;</button>
             `;
@@ -1252,6 +1307,7 @@
             <div class="wish-card-meta">
               <span class="wish-card-category">${CATEGORY_LABELS[item.category] || item.category}</span>
               ${subcatHtml}
+              ${variantHtml}
             </div>
             ${noteHtml}
             <div class="wish-card-footer">
@@ -1296,6 +1352,21 @@
                 return;
             }
             
+            // --- Mark as Received / Unarchive button ---
+            if (e.target.closest('.btn-received') || e.target.closest('.btn-unarchive')) {
+                const btn = e.target.closest('.btn-received') || e.target.closest('.btn-unarchive');
+                const id = btn.dataset.id;
+                const itemToToggle = items.find(i => i.id === id);
+                if (itemToToggle) {
+                    const newStatus = !itemToToggle.is_received;
+                    await updateItem(id, { is_received: newStatus });
+                    items = await loadItems();
+                    render();
+                    showToast(newStatus ? 'Marked as received' : 'Moved back to active list', false);
+                }
+                return;
+            }
+
             // --- Edit / Delete / URL link clicks ---
             if (
                 e.target.closest('.btn-delete') ||
@@ -1309,7 +1380,7 @@
             if (item.reserved_by && !currentUser) {
                 e.preventDefault();
                 e.stopPropagation();
-                showClaimedPopup(item.name, item.reserved_by);
+                showClaimedPopup(item.name, item.reserved_by, item.id);
                 return;
             }
 
@@ -1320,7 +1391,7 @@
     }
 
     // --- Claimed Item Popup (blocks redirect) ---
-    function showClaimedPopup(itemName, claimedBy) {
+    function showClaimedPopup(itemName, claimedBy, itemId) {
         const overlay = document.createElement('div');
         overlay.className = 'claim-popup-overlay';
         overlay.innerHTML = `
@@ -1332,7 +1403,10 @@
               <em>"${escapeHtml(itemName)}"</em>
             </p>
             <p class="claim-popup-hint">Please choose a different gift to avoid duplicates.</p>
-            <button class="claim-popup-close">Got it</button>
+            <div class="claim-popup-actions">
+              <button class="claim-popup-close">Got it</button>
+              ${itemId ? `<button class="btn-unclaim-link" id="unclaimLink">Was this you? Tap to unclaim</button>` : ''}
+            </div>
           </div>
         `;
         document.body.appendChild(overlay);
@@ -1344,6 +1418,26 @@
         };
         overlay.querySelector('.claim-popup-close').addEventListener('click', close);
         overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+        const unclaimBtn = overlay.querySelector('#unclaimLink');
+        if (unclaimBtn && itemId) {
+            unclaimBtn.addEventListener('click', async () => {
+                const inputName = prompt(`Enter the name used when claiming ("${claimedBy}") to unclaim:`);
+                if (inputName && inputName.trim().toLowerCase() === claimedBy.trim().toLowerCase()) {
+                    try {
+                        await updateItem(itemId, { reserved_by: null });
+                        items = await loadItems();
+                        render();
+                        close();
+                        showToast('Gift unclaimed successfully', false);
+                    } catch(err) {
+                        alert('Failed to unclaim item.');
+                    }
+                } else if (inputName) {
+                    alert('Name does not match.');
+                }
+            });
+        }
     }
 
     // --- Claim Confirmation (after successfully claiming) ---
@@ -1467,6 +1561,7 @@
         document.body.style.overflow = '';
         itemForm.reset();
         itemPriorityCheckbox.checked = false;
+        if (itemVariantInput) itemVariantInput.value = '';
         fetchPreview.classList.remove('show');
         subcategoryGroup.style.display = 'none';
         subcategorySelect.value = '';
@@ -1475,6 +1570,31 @@
             formSubmitBtn.textContent = 'Add Item';
             document.querySelector('.modal-title').textContent = 'Add to Wishlist';
         }
+    }
+
+    // Share Button Event Listener
+    if (shareBtn) {
+        shareBtn.addEventListener('click', async () => {
+            const shareData = {
+                title: 'NIFF Wishlist',
+                text: 'Check out my wishlist on NIFF!',
+                url: window.location.href
+            };
+            if (navigator.share) {
+                try {
+                    await navigator.share(shareData);
+                } catch (err) {
+                    if (err.name !== 'AbortError') console.warn('Share error:', err);
+                }
+            } else {
+                try {
+                    await navigator.clipboard.writeText(window.location.href);
+                    showToast('Wishlist link copied to clipboard!', false);
+                } catch (err) {
+                    showToast('Failed to copy link', false);
+                }
+            }
+        });
     }
 
     addBtn.addEventListener('click', () => {
@@ -1562,16 +1682,20 @@
     });
 
     function updateAuthUI() {
+        const receivedTab = document.getElementById('receivedTab');
         if (currentUser) {
             document.body.classList.add('is-authenticated');
             authBtn.style.display = 'none';
             userDisplay.style.display = 'flex';
             userEmailSpan.innerHTML = '<span class="admin-badge">Admin</span>';
+            if (receivedTab) receivedTab.style.display = 'inline-block';
         } else {
             document.body.classList.remove('is-authenticated');
             authBtn.style.display = 'block';
             userDisplay.style.display = 'none';
             userEmailSpan.textContent = '';
+            if (receivedTab) receivedTab.style.display = 'none';
+            if (activeCategory === 'received') activeCategory = 'all';
         }
         render();
     }
@@ -1585,13 +1709,14 @@
         const category = document.getElementById('itemCategory').value;
         const price = document.getElementById('itemPrice').value.trim();
         const image = document.getElementById('itemImage').value.trim();
+        const variant = itemVariantInput ? itemVariantInput.value.trim() : '';
         const is_priority = itemPriorityCheckbox.checked;
         const subcategory = category === 'clothes' ? subcategorySelect.value : '';
 
         if (!name || !url) return;
 
         if (editingItemId) {
-            await updateItem(editingItemId, { name, url, note, category, price, image, subcategory, is_priority });
+            await updateItem(editingItemId, { name, url, note, category, price, image, variant, subcategory, is_priority });
             editingItemId = null;
             formSubmitBtn.textContent = 'Add Item';
             document.querySelector('.modal-title').textContent = 'Add to Wishlist';
@@ -1604,8 +1729,10 @@
                 category,
                 price,
                 image,
+                variant,
                 subcategory,
                 is_priority,
+                is_received: false,
                 createdAt: Date.now(),
             };
             await saveItem(newItem);
@@ -1630,6 +1757,7 @@
         document.getElementById('itemName').value = item.name || '';
         document.getElementById('itemImage').value = item.image || '';
         document.getElementById('itemNote').value = item.note || '';
+        if (itemVariantInput) itemVariantInput.value = item.variant || '';
         document.getElementById('itemCategory').value = item.category || 'misc';
         document.getElementById('itemPrice').value = item.price || '';
         itemPriorityCheckbox.checked = !!item.is_priority;
