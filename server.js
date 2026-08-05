@@ -139,8 +139,8 @@ app.get('/api/fetch-page', async (req, res) => {
 
 // ==========================================
 //  Image Search Fallback
-//  Searches Bing Images + Google Shopping for product photos
-//  Returns the best image URL found
+//  Searches Bing Images + Google Images + DuckDuckGo in parallel
+//  Returns the best actual product image URL found
 // ==========================================
 app.get('/api/search-image', async (req, res) => {
   const productName = req.query.q || '';
@@ -159,7 +159,7 @@ app.get('/api/search-image', async (req, res) => {
     } catch (e) {}
   }
 
-  // Build a product-focused search query
+  // Build a product-focused search query from URL slug if no name
   if (!searchQuery && productUrl) {
     try {
       const u = new URL(productUrl);
@@ -168,81 +168,149 @@ app.get('/api/search-image', async (req, res) => {
     } catch (e) {}
   }
 
-  const fullQuery = `${searchQuery} ${domain} product`.trim();
-  console.log(`[ImageSearch] Searching for: "${fullQuery}"`);
+  // Remove domain from query if it already contains the brand
+  const cleanQuery = searchQuery.replace(new RegExp(domain.split('.')[0], 'gi'), '').trim();
+  const productQuery = cleanQuery || searchQuery;
 
-  const results = [];
+  console.log(`[ImageSearch] Searching for product image: "${productQuery}"`);
 
-  // --- Source 1: Bing Images ---
-  try {
-    const bingUrl = `https://www.bing.com/images/search?q=${encodeURIComponent(fullQuery)}&qft=+filterui:photo-photo&first=1`;
-    const response = await fetch(bingUrl, {
-      headers: { ...BROWSER_HEADERS, 'Accept': 'text/html' },
-      signal: AbortSignal.timeout(10000),
-    });
-
-    if (response.ok) {
-      const html = await response.text();
-
-      // Extract image URLs from Bing's murl parameter (original image URLs)
-      const murlPattern = /murl&quot;:&quot;(https?:\/\/[^&]+?)&quot;/gi;
-      let match;
-      while ((match = murlPattern.exec(html)) !== null && results.length < 5) {
-        const imgUrl = match[1].replace(/&amp;/g, '&');
-        if (imgUrl.match(/\.(jpg|jpeg|png|webp)/i) && !imgUrl.includes('bing.com')) {
-          results.push(imgUrl);
-        }
-      }
-
-      // Also try data-src patterns
-      const dataSrcPattern = /data-src="(https?:\/\/[^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/gi;
-      while ((match = dataSrcPattern.exec(html)) !== null && results.length < 8) {
-        const imgUrl = match[1].replace(/&amp;/g, '&');
-        if (!imgUrl.includes('bing.com') && !imgUrl.includes('microsoft.com')) {
-          results.push(imgUrl);
-        }
-      }
-
-      console.log(`[ImageSearch] Bing found ${results.length} images`);
-    }
-  } catch (e) {
-    console.warn('[ImageSearch] Bing Images failed:', e.message);
+  // Helper: check if URL looks like an actual product image (not a logo/icon/banner)
+  function isProductImage(imgUrl) {
+    if (!imgUrl || typeof imgUrl !== 'string') return false;
+    const lower = imgUrl.toLowerCase();
+    // Reject common non-product patterns
+    if (lower.includes('logo') || lower.includes('favicon') || lower.includes('icon')
+        || lower.includes('sprite') || lower.includes('badge') || lower.includes('banner')
+        || lower.includes('avatar') || lower.includes('profile') || lower.includes('pixel')
+        || lower.includes('tracking') || lower.includes('spacer') || lower.includes('1x1')
+        || lower.includes('blank.gif') || lower.includes('ad_') || lower.includes('/ads/')
+        || lower.includes('bing.com') || lower.includes('microsoft.com')
+        || lower.includes('google.com/images') || lower.includes('gstatic.com/images/branding')
+        || lower.includes('duckduckgo.com')) return false;
+    return true;
   }
 
-  // --- Source 2: DuckDuckGo instant answer (often has direct image) ---
-  if (results.length === 0) {
-    try {
-      const ddgUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(searchQuery)}&format=json&no_html=1`;
-      const response = await fetch(ddgUrl, {
-        headers: { 'User-Agent': BROWSER_HEADERS['User-Agent'] },
-        signal: AbortSignal.timeout(8000),
-      });
+  // --- Run all 3 image sources in PARALLEL ---
+  const [bingResult, googleResult, ddgResult] = await Promise.allSettled([
 
-      if (response.ok) {
-        const data = await response.json();
-        if (data.Image) results.push(data.Image);
-        if (data.Results) {
-          for (const r of data.Results) {
-            if (r.Icon && r.Icon.URL && r.Icon.URL.startsWith('http')) {
-              results.push(r.Icon.URL);
+    // Source 1: Bing Images
+    (async () => {
+      const images = [];
+      try {
+        const bingUrl = `https://www.bing.com/images/search?q=${encodeURIComponent(productQuery + ' product photo')}&qft=+filterui:photo-photo&first=1`;
+        const response = await fetch(bingUrl, {
+          headers: { ...BROWSER_HEADERS, 'Accept': 'text/html' },
+          signal: AbortSignal.timeout(3000),
+        });
+        if (response.ok) {
+          const html = await response.text();
+          // Extract murl (original full-size image URLs from Bing)
+          const murlPattern = /murl&quot;:&quot;(https?:\/\/[^&]+?)&quot;/gi;
+          let match;
+          while ((match = murlPattern.exec(html)) !== null && images.length < 6) {
+            const imgUrl = match[1].replace(/&amp;/g, '&');
+            if (isProductImage(imgUrl)) images.push(imgUrl);
+          }
+          // Also try turl (thumbnail preview URLs — still decent quality)
+          const turlPattern = /turl&quot;:&quot;(https?:\/\/[^&]+?)&quot;/gi;
+          while ((match = turlPattern.exec(html)) !== null && images.length < 10) {
+            const imgUrl = match[1].replace(/&amp;/g, '&');
+            if (isProductImage(imgUrl)) images.push(imgUrl);
+          }
+          console.log(`[ImageSearch] Bing found ${images.length} images`);
+        }
+      } catch (e) {
+        console.warn('[ImageSearch] Bing failed:', e.message);
+      }
+      return images;
+    })(),
+
+    // Source 2: Google Images (scrape thumbnails)
+    (async () => {
+      const images = [];
+      try {
+        const googleUrl = `https://www.google.com/search?q=${encodeURIComponent(productQuery + ' product')}&tbm=isch&hl=en`;
+        const response = await fetch(googleUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml',
+            'Accept-Language': 'en-GB,en;q=0.9',
+          },
+          signal: AbortSignal.timeout(3000),
+        });
+        if (response.ok) {
+          const html = await response.text();
+          // Google embeds image URLs in various patterns
+          // Pattern 1: data URLs in JSON blobs (base64 thumbnails — skip these)
+          // Pattern 2: actual URLs referenced in the page script data
+          const imgPatterns = [
+            /\["(https?:\/\/[^"]+\.(?:jpg|jpeg|png|webp)[^"]*)",\d{3,},\d{3,}\]/gi,
+            /\\"ou\\":\\"(https?:\/\/[^"\\]+)\\"/gi,
+            /src="(https?:\/\/[^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/gi,
+          ];
+          for (const pattern of imgPatterns) {
+            let match;
+            while ((match = pattern.exec(html)) !== null && images.length < 6) {
+              const imgUrl = match[1].replace(/\\u003d/g, '=').replace(/\\u0026/g, '&');
+              if (isProductImage(imgUrl) && imgUrl.length > 30) images.push(imgUrl);
             }
           }
+          console.log(`[ImageSearch] Google found ${images.length} images`);
         }
-        console.log(`[ImageSearch] DDG instant found ${results.length} images`);
+      } catch (e) {
+        console.warn('[ImageSearch] Google Images failed:', e.message);
       }
-    } catch (e) {
-      console.warn('[ImageSearch] DDG instant failed:', e.message);
-    }
-  }
+      return images;
+    })(),
 
-  // --- Source 3: Page screenshot via thum.io (absolute last resort — always works) ---
+    // Source 3: DuckDuckGo instant answer
+    (async () => {
+      const images = [];
+      try {
+        const ddgUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(productQuery)}&format=json&no_html=1`;
+        const response = await fetch(ddgUrl, {
+          headers: { 'User-Agent': BROWSER_HEADERS['User-Agent'] },
+          signal: AbortSignal.timeout(3000),
+        });
+        if (response.ok) {
+          const data = await response.json();
+          if (data.Image && isProductImage(data.Image)) images.push(data.Image);
+          if (data.Results) {
+            for (const r of data.Results) {
+              if (r.Icon && r.Icon.URL && r.Icon.URL.startsWith('http') && isProductImage(r.Icon.URL)) {
+                images.push(r.Icon.URL);
+              }
+            }
+          }
+          console.log(`[ImageSearch] DDG found ${images.length} images`);
+        }
+      } catch (e) {
+        console.warn('[ImageSearch] DDG failed:', e.message);
+      }
+      return images;
+    })(),
+  ]);
+
+  // Merge all results, prioritizing Bing > Google > DDG
+  const allImages = [
+    ...(bingResult.status === 'fulfilled' ? bingResult.value : []),
+    ...(googleResult.status === 'fulfilled' ? googleResult.value : []),
+    ...(ddgResult.status === 'fulfilled' ? ddgResult.value : []),
+  ];
+
+  // Deduplicate
+  const uniqueImages = [...new Set(allImages)];
+
+  // Screenshot fallback (thum.io) — only if zero images found
   const screenshotUrl = productUrl
     ? `https://image.thum.io/get/width/600/crop/400/noanimate/${productUrl}`
     : '';
 
+  console.log(`[ImageSearch] Total unique images: ${uniqueImages.length}, best: ${uniqueImages[0]?.substring(0, 80) || 'none'}`);
+
   res.json({
-    images: results,
-    best: results[0] || '',
+    images: uniqueImages.slice(0, 10),
+    best: uniqueImages[0] || '',
     screenshot: screenshotUrl,
   });
 });
