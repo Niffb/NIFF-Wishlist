@@ -114,6 +114,35 @@ body {
   background: #f4f4f5;
 }
 
+.btn-refresh-prices {
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 0.5rem 1rem;
+  border-radius: 100px;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  border: 1px solid var(--border);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  transition: all var(--transition);
+}
+
+.btn-refresh-prices:hover {
+  background: var(--text);
+  color: #000;
+  border-color: var(--text);
+}
+
+.btn-refresh-prices.loading {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
 .btn-auth {
   background: var(--text);
   color: var(--accent-text);
