@@ -207,16 +207,15 @@ app.get('/api/search-image', async (req, res) => {
         || lower.includes('avatar') || lower.includes('profile') || lower.includes('pixel')
         || lower.includes('tracking') || lower.includes('spacer') || lower.includes('1x1')
         || lower.includes('blank.gif') || lower.includes('ad_') || lower.includes('/ads/')
-        || lower.includes('bing.com') || lower.includes('microsoft.com')
-        || lower.includes('google.com/images') || lower.includes('gstatic.com/images/branding')
-        || lower.includes('duckduckgo.com')) return false;
+        || lower.includes('microsoft.com')
+        || lower.includes('google.com/images') || lower.includes('gstatic.com/images/branding')) return false;
     return true;
   }
 
   // --- Run all 3 image sources in PARALLEL ---
   const [bingResult, googleResult, ddgResult] = await Promise.allSettled([
 
-    // Source 1: Bing Images
+    // Source 1: Bing Images (extract murl AND turl thumbnails)
     (async () => {
       const images = [];
       try {
@@ -227,16 +226,16 @@ app.get('/api/search-image', async (req, res) => {
         });
         if (response.ok) {
           const html = await response.text();
-          // Extract murl (original full-size image URLs from Bing)
+          // Extract murl (original full-size image URLs)
           const murlPattern = /murl&quot;:&quot;(https?:\/\/[^&]+?)&quot;/gi;
           let match;
           while ((match = murlPattern.exec(html)) !== null && images.length < 6) {
             const imgUrl = match[1].replace(/&amp;/g, '&');
             if (isProductImage(imgUrl)) images.push(imgUrl);
           }
-          // Also try turl (thumbnail preview URLs — still decent quality)
+          // Extract turl (high-reliability Bing CDN thumbnails)
           const turlPattern = /turl&quot;:&quot;(https?:\/\/[^&]+?)&quot;/gi;
-          while ((match = turlPattern.exec(html)) !== null && images.length < 10) {
+          while ((match = turlPattern.exec(html)) !== null && images.length < 12) {
             const imgUrl = match[1].replace(/&amp;/g, '&');
             if (isProductImage(imgUrl)) images.push(imgUrl);
           }
@@ -263,9 +262,6 @@ app.get('/api/search-image', async (req, res) => {
         });
         if (response.ok) {
           const html = await response.text();
-          // Google embeds image URLs in various patterns
-          // Pattern 1: data URLs in JSON blobs (base64 thumbnails — skip these)
-          // Pattern 2: actual URLs referenced in the page script data
           const imgPatterns = [
             /\["(https?:\/\/[^"]+\.(?:jpg|jpeg|png|webp)[^"]*)",\d{3,},\d{3,}\]/gi,
             /\\"ou\\":\\"(https?:\/\/[^"\\]+)\\"/gi,
@@ -286,29 +282,38 @@ app.get('/api/search-image', async (req, res) => {
       return images;
     })(),
 
-    // Source 3: DuckDuckGo instant answer
+    // Source 3: DuckDuckGo Image API
     (async () => {
       const images = [];
       try {
-        const ddgUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(productQuery)}&format=json&no_html=1`;
-        const response = await fetch(ddgUrl, {
+        // First get vqd token from DuckDuckGo
+        const tokenRes = await fetch(`https://duckduckgo.com/?q=${encodeURIComponent(productQuery)}`, {
           headers: { 'User-Agent': BROWSER_HEADERS['User-Agent'] },
-          signal: AbortSignal.timeout(3000),
+          signal: AbortSignal.timeout(2000)
         });
-        if (response.ok) {
-          const data = await response.json();
-          if (data.Image && isProductImage(data.Image)) images.push(data.Image);
-          if (data.Results) {
-            for (const r of data.Results) {
-              if (r.Icon && r.Icon.URL && r.Icon.URL.startsWith('http') && isProductImage(r.Icon.URL)) {
-                images.push(r.Icon.URL);
+        if (tokenRes.ok) {
+          const tokenText = await tokenRes.text();
+          const vqdMatch = tokenText.match(/vqd=["']([^"']+)["']/);
+          if (vqdMatch && vqdMatch[1]) {
+            const ddgImgUrl = `https://duckduckgo.com/i.js?l=us-en&o=json&q=${encodeURIComponent(productQuery)}&vqd=${vqdMatch[1]}`;
+            const ddgRes = await fetch(ddgImgUrl, {
+              headers: { 'User-Agent': BROWSER_HEADERS['User-Agent'] },
+              signal: AbortSignal.timeout(2000)
+            });
+            if (ddgRes.ok) {
+              const ddgData = await ddgRes.json();
+              if (ddgData.results && Array.isArray(ddgData.results)) {
+                for (const r of ddgData.results) {
+                  if (r.image && isProductImage(r.image)) images.push(r.image);
+                  if (r.thumbnail && isProductImage(r.thumbnail)) images.push(r.thumbnail);
+                  if (images.length >= 8) break;
+                }
               }
             }
           }
-          console.log(`[ImageSearch] DDG found ${images.length} images`);
         }
       } catch (e) {
-        console.warn('[ImageSearch] DDG failed:', e.message);
+        console.warn('[ImageSearch] DDG image API failed:', e.message);
       }
       return images;
     })(),
