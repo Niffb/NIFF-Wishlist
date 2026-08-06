@@ -2345,6 +2345,69 @@
         }
     }
 
+    // Auto-Find Image button in modal
+    const findImgBtn = document.getElementById('findImgBtn');
+    if (findImgBtn) {
+        findImgBtn.addEventListener('click', async () => {
+            const name = document.getElementById('itemName').value.trim();
+            const url = document.getElementById('itemUrl').value.trim();
+            if (!name && !url) {
+                showToast('Enter name or URL first', false);
+                return;
+            }
+
+            findImgBtn.disabled = true;
+            findImgBtn.textContent = 'Searching…';
+
+            try {
+                const searchQ = name || url;
+                const res = await fetch(`/api/search-image?q=${encodeURIComponent(searchQ)}&url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(4000) });
+                if (res.ok) {
+                    const json = await res.json();
+                    const best = json.best || (json.images && json.images[0]);
+                    if (best) {
+                        document.getElementById('itemImage').value = best;
+                        if (fetchPreviewImg) {
+                            fetchPreviewImg.src = best;
+                            fetchPreviewImg.style.display = 'block';
+                        }
+                        showToast('Image found!', true);
+                    } else {
+                        showToast('No image found', false);
+                    }
+                }
+            } catch (e) {
+                console.warn('Find image failed:', e);
+                showToast('Image search failed', false);
+            } finally {
+                findImgBtn.disabled = false;
+                findImgBtn.textContent = '🔍 Find';
+            }
+        });
+    }
+
+    async function autoRepairMissingImages() {
+        for (const item of items) {
+            if (!item.image && item.name && item.url) {
+                try {
+                    const res = await fetch(`/api/search-image?q=${encodeURIComponent(item.name)}&url=${encodeURIComponent(item.url)}`, { signal: AbortSignal.timeout(4000) });
+                    if (res.ok) {
+                        const json = await res.json();
+                        const best = json.best || (json.images && json.images[0]);
+                        if (best) {
+                            console.log(`[AutoRepair] Recovered missing image for "${item.name}":`, best);
+                            item.image = best;
+                            await updateItem(item.id, { image: best });
+                            render();
+                        }
+                    }
+                } catch (e) {
+                    console.warn(`[AutoRepair] Failed for "${item.name}":`, e.message);
+                }
+            }
+        }
+    }
+
     async function init() {
         items = await loadItems();
         render();
@@ -2353,6 +2416,9 @@
             currentUser = { email: 'Admin', id: 'admin' };
             updateAuthUI();
         }
+
+        // Auto-recover missing images for existing items in background
+        autoRepairMissingImages();
 
         startSupabaseKeepalive();
         // Auto-sync items every 10 seconds for real-time multi-device updates
