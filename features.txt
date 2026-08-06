@@ -63,7 +63,20 @@
   combined monetary cost (e.g., "12 items • £349.50").
 
 
-6. ITEM RESERVATION / CLAIM SYSTEM (GIFT GIVING)
+6. PRICE DROP BADGES & PRICE HISTORY TRACKING
+--------------------------------------------------------------------------------
+- Automatic Price Drop Detection: Automatically calculates monetary savings 
+  and percentage drops when item prices decrease.
+- High-Contrast Price Drop Badges: Displays visual discount badges on product 
+  cards (e.g., "📉 -£10.00 (-20%)").
+- Original Strikethrough Prices: Displays original price strikethroughs alongside 
+  the current discounted price.
+- Interactive Price History Modal: Clicking the 📊 button on any item card opens a 
+  modal displaying original price, current price, lowest recorded price, and a 
+  chronological timestamped history log.
+
+
+7. ITEM RESERVATION / CLAIM SYSTEM (GIFT GIVING)
 --------------------------------------------------------------------------------
 - Guest Reservations: Allows visitors/friends to reserve/claim items so others 
   know an item is being purchased (prevents duplicate gifts).
@@ -72,14 +85,14 @@
 - Received Tab: Separate section to archive and view items already received/gifted.
 
 
-7. PRIORITY MARKING
+8. PRIORITY MARKING
 --------------------------------------------------------------------------------
 - High Priority Toggle: Mark items as "High Priority (Must Have)".
 - Priority Filtering: Displays a dedicated priority badge on product cards and 
   groups high-priority items under the "Priority" tab.
 
 
-8. ADMIN AUTHENTICATION & GUEST ACCESS MODES
+9. ADMIN AUTHENTICATION & GUEST ACCESS MODES
 --------------------------------------------------------------------------------
 - Admin Password Security: Protected login via server authentication 
   (`/api/login`) and frontend authentication modal.
@@ -88,7 +101,7 @@
   protecting the wishlist from unauthorized edits.
 
 
-9. BACKEND ARCHITECTURE & DATA SYNC
+10. BACKEND ARCHITECTURE & DATA SYNC
 --------------------------------------------------------------------------------
 - Dual-Persistence Engine: Integrates live Supabase cloud database sync with 
   automatic fallback to local Node/Express backend and local file storage.
@@ -102,7 +115,7 @@
   and production cloud environments (Vercel, Render, GitHub Pages).
 
 
-10. PWA, SHARING & MOBILE UX
+11. PWA, SHARING & MOBILE UX
 --------------------------------------------------------------------------------
 - Share Button: Integrated Web Share API with clipboard copy fallback for 
   instant wishlist sharing.

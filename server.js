@@ -543,9 +543,29 @@ async function runDailyPriceCheck() {
 
           if (scrapedPrice && scrapedPrice !== item.price) {
             console.log(`[Daily Scraper] Price change for "${item.name}": ${item.price || 'N/A'} -> ${scrapedPrice}`);
-            updates.previous_price = item.price || '';
+            
+            let cleanNote = item.note || '';
+            let orig = item.price || scrapedPrice;
+            let hist = [];
+            
+            const phMatch = cleanNote.match(/\[PH:(.*?)\]/);
+            if (phMatch) {
+              try {
+                const meta = JSON.parse(phMatch[1]);
+                orig = meta.orig || item.price || scrapedPrice;
+                hist = Array.isArray(meta.hist) ? meta.hist : [];
+              } catch (e) {}
+              cleanNote = cleanNote.replace(/\s*\[PH:.*?\]\s*/g, '').trim();
+            }
+
+            if (hist.length === 0 && item.price) {
+              hist.push({ price: item.price, date: item.created_at || now });
+            }
+            hist.push({ price: scrapedPrice, date: now });
+
+            const phMeta = { orig, prev: item.price || '', hist };
+            updates.note = `${cleanNote} [PH:${JSON.stringify(phMeta)}]`.trim();
             updates.price = scrapedPrice;
-            updates.last_price_change = now;
             updatedCount++;
           } else {
             verifiedCount++;
