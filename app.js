@@ -326,8 +326,10 @@
         }
 
         // Handle is_received by storing in reserved_by if special flag
-        if (copy.is_received) {
+        if (copy.is_received === true) {
             copy.reserved_by = '__RECEIVED__';
+        } else if (copy.is_received === false) {
+            copy.reserved_by = null;
         } else if (copy.reserved_by === '__RECEIVED__') {
             copy.reserved_by = null;
         }
@@ -1797,7 +1799,7 @@
                 const itemToToggle = items.find(i => i.id === id);
                 if (itemToToggle) {
                     const newStatus = !itemToToggle.is_received;
-                    await updateItem(id, { is_received: newStatus });
+                    await updateItem(id, { ...itemToToggle, is_received: newStatus });
                     items = await loadItems();
                     render();
                     showToast(newStatus ? 'Marked as received' : 'Moved back to active list', false);
