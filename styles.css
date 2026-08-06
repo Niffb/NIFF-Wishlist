@@ -1420,3 +1420,145 @@ body.is-authenticated .site-header {
 .claim-popup-success .claim-popup-close:hover {
   background: #15803d;
 }
+
+/* Price Drop & Price History UI */
+.badge-price-drop {
+  background: #10b981;
+  color: #000;
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 0.2rem 0.5rem;
+  border-radius: 100px;
+  box-shadow: var(--shadow-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.wish-card-price-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.wish-card-price-orig {
+  font-size: 0.78rem;
+  color: var(--text-tertiary);
+  text-decoration: line-through;
+  font-weight: 400;
+}
+
+.btn-price-history {
+  background: transparent;
+  border: none;
+  font-size: 0.8rem;
+  cursor: pointer;
+  padding: 0.15rem 0.3rem;
+  border-radius: 4px;
+  opacity: 0.65;
+  transition: opacity var(--transition), transform var(--transition);
+}
+
+.btn-price-history:hover {
+  opacity: 1;
+  transform: scale(1.1);
+}
+
+/* History Modal Styling */
+.history-modal {
+  max-width: 480px;
+  width: 90%;
+}
+
+.history-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.85rem;
+  margin-bottom: 1.25rem;
+  text-align: center;
+}
+
+.history-stat-box {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.history-stat-label {
+  font-size: 0.68rem;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+
+.history-stat-value {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.history-stat-value.drop {
+  color: #10b981;
+}
+
+.history-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-height: 300px;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.history-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.65rem 0.85rem;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+
+.history-date {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+}
+
+.history-price-val {
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.history-tag {
+  font-size: 0.68rem;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.history-tag.tag-initial {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-secondary);
+}
+
+.history-tag.tag-drop {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+}
+
+.history-tag.tag-increase {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}

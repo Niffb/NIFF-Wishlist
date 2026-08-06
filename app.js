@@ -315,7 +315,7 @@
         };
     }
 
-    // Encode variant and is_received into existing Supabase columns
+    // Encode variant, price history, and is_received into existing Supabase columns
     function toDbFormat(item) {
         const copy = { ...item };
         
@@ -333,12 +333,31 @@
         }
         delete copy.is_received;
 
-        // Handle variant by packing into note as [variant] if present
+        // Build price history metadata payload
+        const phMeta = {
+            orig: copy.original_price || copy.price || '',
+            prev: copy.previous_price || '',
+            hist: Array.isArray(copy.price_history) ? copy.price_history : []
+        };
+
+        // Clean existing note from old metadata/variant tags
+        let cleanNote = (copy.note || '')
+            .replace(/^\[[^\]]+\]\s*/, '')
+            .replace(/\s*\[PH:.*?\]\s*/g, '')
+            .trim();
+
+        let prefix = '';
         if (copy.variant) {
-            const cleanNote = (copy.note || '').replace(/^\[[^\]]+\]\s*/, '').trim();
-            copy.note = cleanNote ? `[${copy.variant}] ${cleanNote}` : `[${copy.variant}]`;
+            prefix = `[${copy.variant}] `;
         }
+
+        const phTag = ` [PH:${JSON.stringify(phMeta)}]`;
+        copy.note = `${prefix}${cleanNote}${phTag}`.trim();
+
         delete copy.variant;
+        delete copy.original_price;
+        delete copy.previous_price;
+        delete copy.price_history;
 
         // Remove any unknown properties before sending to PostgREST
         const validColumns = ['id', 'name', 'url', 'note', 'category', 'price', 'image', 'subcategory', 'is_priority', 'reserved_by', 'created_at'];
@@ -351,7 +370,7 @@
         return dbPayload;
     }
 
-    // Decode variant and is_received from existing Supabase columns
+    // Decode variant, price history, and is_received from existing Supabase columns
     function fromDbFormat(dbItem) {
         const item = {
             ...dbItem,
@@ -359,14 +378,37 @@
             is_received: dbItem.reserved_by === '__RECEIVED__',
             reserved_by: dbItem.reserved_by === '__RECEIVED__' ? null : dbItem.reserved_by,
             variant: '',
-            note: dbItem.note || ''
+            note: dbItem.note || '',
+            original_price: dbItem.price || '',
+            previous_price: '',
+            price_history: []
         };
 
-        // Unpack [variant] from note if present
+        // 1. Unpack [PH:...] price history metadata if present
+        const phMatch = (item.note || '').match(/\[PH:(.*?)\]/);
+        if (phMatch) {
+            try {
+                const meta = JSON.parse(phMatch[1]);
+                item.original_price = meta.orig || item.price || '';
+                item.previous_price = meta.prev || '';
+                item.price_history = Array.isArray(meta.hist) ? meta.hist : [];
+            } catch (e) {}
+            item.note = item.note.replace(/\s*\[PH:.*?\]\s*/g, '').trim();
+        }
+
+        // 2. Unpack [variant] from note if present
         const variantMatch = (item.note || '').match(/^\[([^\]]+)\]\s*(.*)$/);
         if (variantMatch) {
             item.variant = variantMatch[1];
             item.note = variantMatch[2];
+        }
+
+        // Ensure price_history has at least 1 entry if price exists
+        if (item.price && (!item.price_history || item.price_history.length === 0)) {
+            item.price_history = [{ price: item.price, date: item.createdAt || Date.now() }];
+        }
+        if (!item.original_price && item.price) {
+            item.original_price = item.price;
         }
 
         return item;
@@ -1343,6 +1385,121 @@
         return isNaN(val) ? 0 : val;
     }
 
+    function getNumericPrice(priceStr) {
+        if (!priceStr) return 0;
+        const cleaned = priceStr.replace(/[^\d.]/g, '');
+        const val = parseFloat(cleaned);
+        return isNaN(val) ? 0 : val;
+    }
+
+    function calculatePriceDrop(item) {
+        const currVal = getNumericPrice(item.price);
+        const origVal = getNumericPrice(item.original_price);
+        const prevVal = getNumericPrice(item.previous_price);
+
+        if (origVal > 0 && currVal > 0 && currVal < origVal) {
+            const diff = origVal - currVal;
+            const percent = Math.round((diff / origVal) * 100);
+            const symbol = (item.price && item.price.match(/^[^\d\s]/) || item.original_price.match(/^[^\d\s]/) || ['£'])[0];
+            return {
+                hasDrop: true,
+                diffFormatted: `${symbol}${diff.toFixed(2)}`,
+                percent,
+                origFormatted: item.original_price
+            };
+        }
+
+        if (prevVal > 0 && currVal > 0 && currVal < prevVal) {
+            const diff = prevVal - currVal;
+            const percent = Math.round((diff / prevVal) * 100);
+            const symbol = (item.price && item.price.match(/^[^\d\s]/) || ['£'])[0];
+            return {
+                hasDrop: true,
+                diffFormatted: `${symbol}${diff.toFixed(2)}`,
+                percent,
+                origFormatted: item.previous_price
+            };
+        }
+
+        return { hasDrop: false };
+    }
+
+    function openPriceHistoryModal(item) {
+        const historyModalOverlay = document.getElementById('historyModalOverlay');
+        const historyModalTitle = document.getElementById('historyModalTitle');
+        const historySummary = document.getElementById('historySummary');
+        const historyTimeline = document.getElementById('historyTimeline');
+
+        if (!historyModalOverlay) return;
+
+        historyModalTitle.textContent = item.name ? `${item.name} — Price History` : 'Price History';
+
+        const dropInfo = calculatePriceDrop(item);
+        const origVal = item.original_price || item.price || '—';
+        const currVal = item.price || '—';
+        
+        let lowestVal = currVal;
+        let lowestNum = getNumericPrice(currVal);
+        const history = item.price_history || [{ price: item.price, date: item.createdAt || Date.now() }];
+        
+        history.forEach(entry => {
+            const num = getNumericPrice(entry.price);
+            if (num > 0 && (lowestNum === 0 || num < lowestNum)) {
+                lowestNum = num;
+                lowestVal = entry.price;
+            }
+        });
+
+        historySummary.innerHTML = `
+          <div class="history-stat-box">
+            <span class="history-stat-label">Original</span>
+            <span class="history-stat-value">${escapeHtml(origVal)}</span>
+          </div>
+          <div class="history-stat-box">
+            <span class="history-stat-label">Current</span>
+            <span class="history-stat-value ${dropInfo.hasDrop ? 'drop' : ''}">${escapeHtml(currVal)}</span>
+          </div>
+          <div class="history-stat-box">
+            <span class="history-stat-label">Lowest</span>
+            <span class="history-stat-value drop">${escapeHtml(lowestVal)}</span>
+          </div>
+        `;
+
+        const sortedHistory = [...history].sort((a, b) => (b.date || 0) - (a.date || 0));
+
+        let timelineHtml = '';
+        sortedHistory.forEach((entry, idx) => {
+            const dateStr = entry.date ? new Date(entry.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'Initial';
+            const priceNum = getNumericPrice(entry.price);
+            const prevEntry = sortedHistory[idx + 1];
+            const prevNum = prevEntry ? getNumericPrice(prevEntry.price) : priceNum;
+
+            let tagHtml = `<span class="history-tag tag-initial">Initial</span>`;
+            if (prevEntry) {
+                if (priceNum < prevNum) {
+                    tagHtml = `<span class="history-tag tag-drop">📉 Drop</span>`;
+                } else if (priceNum > prevNum) {
+                    tagHtml = `<span class="history-tag tag-increase">📈 Increase</span>`;
+                } else {
+                    tagHtml = `<span class="history-tag tag-initial">Unchanged</span>`;
+                }
+            }
+
+            timelineHtml += `
+              <div class="history-item">
+                <span class="history-date">${escapeHtml(dateStr)}</span>
+                <div class="history-price-val">
+                  <span>${escapeHtml(entry.price)}</span>
+                  ${tagHtml}
+                </div>
+              </div>
+            `;
+        });
+
+        historyTimeline.innerHTML = timelineHtml;
+        historyModalOverlay.classList.add('show');
+    }
+
     function updateSummary(filtered) {
         let total = 0;
         filtered.forEach(item => {
@@ -1506,9 +1663,23 @@
         card.className = 'wish-card';
         card.style.animationDelay = `${i * 0.04}s`;
 
-        const priceHtml = item.price
-            ? `<div class="wish-card-price">${escapeHtml(item.price)}</div>`
-            : '';
+        const dropInfo = calculatePriceDrop(item);
+        
+        let priceHtml = '';
+        if (item.price) {
+            const origPriceSpan = dropInfo.hasDrop
+                ? `<span class="wish-card-price-orig">${escapeHtml(dropInfo.origFormatted)}</span>`
+                : '';
+            const historyBtn = `<button class="btn-price-history" data-id="${item.id}" title="View Price History">📊</button>`;
+            priceHtml = `
+              <div class="wish-card-price-wrapper">
+                ${origPriceSpan}
+                <div class="wish-card-price">${escapeHtml(item.price)}</div>
+                ${historyBtn}
+              </div>
+            `;
+        }
+
         const noteHtml = item.note
             ? `<div class="wish-card-note">${escapeHtml(item.note)}</div>`
             : '';
@@ -1523,10 +1694,15 @@
             ? `<span class="wish-card-variant">${escapeHtml(item.variant)}</span>`
             : '';
 
-        // Badges: admin never sees reservation info — only priority
+        // Badges: admin never sees reservation info — priority & price drop
+        const dropBadge = dropInfo.hasDrop
+            ? `<span class="badge-price-drop">📉 -${dropInfo.diffFormatted} (${dropInfo.percent}%)</span>`
+            : '';
+
         const badgesHtml = `
           <div class="item-badges">
             ${item.is_priority ? '<span class="badge-priority">Priority</span>' : ''}
+            ${dropBadge}
           </div>
         `;
 
@@ -1578,6 +1754,13 @@
         `;
 
         card.addEventListener('click', async (e) => {
+            // --- Price History button ---
+            if (e.target.closest('.btn-price-history')) {
+                e.stopPropagation();
+                openPriceHistoryModal(item);
+                return;
+            }
+
             // --- Copy button ---
             if (e.target.closest('.btn-copy')) {
                 const url = e.target.closest('.btn-copy').dataset.url;
@@ -2009,7 +2192,24 @@
         if (!name || !url) return;
 
         if (editingItemId) {
-            await updateItem(editingItemId, { name, url, note, category, price, image, variant, subcategory, is_priority });
+            const existing = items.find(i => i.id === editingItemId);
+            let history = existing ? (existing.price_history || []) : [];
+            const oldPrice = existing ? existing.price : '';
+            const origPrice = existing ? (existing.original_price || oldPrice || price) : price;
+            
+            if (price && price !== oldPrice) {
+                history.push({ price, date: Date.now() });
+            }
+            if (history.length === 0 && price) {
+                history.push({ price, date: Date.now() });
+            }
+
+            await updateItem(editingItemId, {
+                name, url, note, category, price, image, variant, subcategory, is_priority,
+                original_price: origPrice,
+                previous_price: oldPrice,
+                price_history: history
+            });
             editingItemId = null;
             formSubmitBtn.textContent = 'Add Item';
             document.querySelector('.modal-title').textContent = 'Add to Wishlist';
@@ -2026,6 +2226,9 @@
                 subcategory,
                 is_priority,
                 is_received: false,
+                original_price: price,
+                previous_price: price,
+                price_history: price ? [{ price, date: Date.now() }] : [],
                 createdAt: Date.now(),
             };
             await saveItem(newItem);
@@ -2035,6 +2238,20 @@
         render();
         closeModal();
     });
+
+    // History Modal Close handlers
+    const historyModalOverlay = document.getElementById('historyModalOverlay');
+    const historyModalClose = document.getElementById('historyModalClose');
+    if (historyModalClose && historyModalOverlay) {
+        historyModalClose.addEventListener('click', () => {
+            historyModalOverlay.classList.remove('show');
+        });
+        historyModalOverlay.addEventListener('click', (e) => {
+            if (e.target === historyModalOverlay) {
+                historyModalOverlay.classList.remove('show');
+            }
+        });
+    }
 
     grid.addEventListener('click', (e) => {
         const editBtn = e.target.closest('.btn-edit');
