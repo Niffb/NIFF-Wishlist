@@ -268,6 +268,7 @@
     const itemPriorityCheckbox = document.getElementById('itemPriority');
     const itemVariantInput = document.getElementById('itemVariant');
     const shareBtn = document.getElementById('shareBtn');
+    const refreshPricesBtn = document.getElementById('refreshPricesBtn');
 
     // Auth DOM
     const authBtn = document.getElementById('authBtn');
@@ -1847,6 +1848,36 @@
                 } catch (err) {
                     showToast('Failed to copy link', false);
                 }
+            }
+        });
+    }
+
+    // Refresh Prices Button Event Listener
+    if (refreshPricesBtn) {
+        refreshPricesBtn.addEventListener('click', async () => {
+            refreshPricesBtn.classList.add('loading');
+            refreshPricesBtn.textContent = '⚡ Checking...';
+            showToast('Re-scraping pages for price updates...', false);
+
+            try {
+                const res = await fetch('/api/refresh-prices');
+                const data = await res.json();
+                
+                // Reload latest items
+                items = await loadItems();
+                render();
+
+                if (data.updated > 0) {
+                    showToast(`Updated ${data.updated} price(s)!`, false);
+                } else {
+                    showToast(`All ${data.verified || items.length} prices verified up to date`, false);
+                }
+            } catch (err) {
+                console.error('Refresh prices error:', err);
+                showToast('Failed to refresh prices', false);
+            } finally {
+                refreshPricesBtn.classList.remove('loading');
+                refreshPricesBtn.textContent = '⚡ Refresh Prices';
             }
         });
     }

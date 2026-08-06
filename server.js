@@ -435,8 +435,155 @@ app.get('/api/search-product', async (req, res) => {
   res.json(result);
 });
 
+// ==========================================
+//  Daily Automated Price & Details Scraper
+// ==========================================
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://teqefehtuesydtwimwqq.supabase.co';
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRlcWVmZWh0dWVzeWR0d2ltd3FxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUzNDY2MTMsImV4cCI6MjEwMDkyMjYxM30.JyAVIxqougf8pTfU3RQg2fMx3xgV7qP4V2FGnymDNW0';
+
+function extractPriceFromHtml(html) {
+  if (!html) return '';
+
+  // 1. JSON-LD search for price
+  const jsonLdMatches = [...html.matchAll(/<script[^>]+type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi)];
+  for (const m of jsonLdMatches) {
+    try {
+      const data = JSON.parse(m[1]);
+      const findPrice = (obj) => {
+        if (!obj || typeof obj !== 'object') return null;
+        if (obj.price !== undefined && obj.price !== '') return obj;
+        if (Array.isArray(obj)) {
+          for (const item of obj) {
+            const p = findPrice(item);
+            if (p) return p;
+          }
+        }
+        if (obj.offers) return findPrice(obj.offers);
+        return null;
+      };
+      const found = findPrice(data);
+      if (found) {
+        const val = String(found.price);
+        const curr = found.priceCurrency === 'GBP' ? '£' : found.priceCurrency === 'EUR' ? '€' : found.priceCurrency === 'USD' ? '$' : '£';
+        const num = parseFloat(val.replace(/[^\d.]/g, ''));
+        if (!isNaN(num)) return `${curr}${num.toFixed(2)}`;
+      }
+    } catch (e) {}
+  }
+
+  // 2. Meta tag search for price
+  const metaPrice = html.match(/meta[^>]+property=["'](?:product|og):price:amount["'][^>]+content=["']([^"']+)["']/i) ||
+                    html.match(/meta[^>]+content=["']([^"']+)["'][^>]+property=["'](?:product|og):price:amount["']/i);
+  if (metaPrice && metaPrice[1]) {
+    const num = parseFloat(metaPrice[1]);
+    if (!isNaN(num)) return `£${num.toFixed(2)}`;
+  }
+
+  // 3. Fallback regex search
+  const priceMatches = html.match(/£\s?[\d,]+(?:\.\d{2})?/g);
+  if (priceMatches && priceMatches.length > 0) {
+    const cleanNum = parseFloat(priceMatches[0].replace(/[^\d.]/g, ''));
+    if (!isNaN(cleanNum)) return `£${cleanNum.toFixed(2)}`;
+  }
+
+  return '';
+}
+
+async function runDailyPriceCheck() {
+  console.log('[Daily Scraper] Starting daily price & details verification...');
+  try {
+    const headers = {
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      'Content-Type': 'application/json'
+    };
+
+    let items = [];
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/wishlist?select=*`, { headers });
+    if (response.ok) {
+      items = await response.json();
+    } else {
+      const fs = require('fs');
+      if (fs.existsSync('./wishlist.json')) {
+        items = JSON.parse(fs.readFileSync('./wishlist.json', 'utf8'));
+      }
+    }
+
+    if (!items || items.length === 0) {
+      console.log('[Daily Scraper] No items found to check.');
+      return { total: 0, updated: 0, verified: 0 };
+    }
+
+    let updatedCount = 0;
+    let verifiedCount = 0;
+    const now = Date.now();
+
+    for (const item of items) {
+      if (!item.url) continue;
+
+      try {
+        let referer = '';
+        try { referer = new URL(item.url).origin; } catch (e) {}
+
+        const pageRes = await fetch(item.url, {
+          headers: {
+            ...BROWSER_HEADERS,
+            'Referer': referer,
+          },
+          signal: AbortSignal.timeout(6000),
+        });
+
+        if (pageRes.ok) {
+          const html = await pageRes.text();
+          const scrapedPrice = extractPriceFromHtml(html);
+
+          const updates = {
+            last_verified: now
+          };
+
+          if (scrapedPrice && scrapedPrice !== item.price) {
+            console.log(`[Daily Scraper] Price change for "${item.name}": ${item.price || 'N/A'} -> ${scrapedPrice}`);
+            updates.previous_price = item.price || '';
+            updates.price = scrapedPrice;
+            updates.last_price_change = now;
+            updatedCount++;
+          } else {
+            verifiedCount++;
+          }
+
+          // Update Supabase item
+          await fetch(`${SUPABASE_URL}/rest/v1/wishlist?id=eq.${item.id}`, {
+            method: 'PATCH',
+            headers,
+            body: JSON.stringify(updates)
+          });
+        }
+      } catch (err) {
+        console.warn(`[Daily Scraper] Failed to re-scrape "${item.name}":`, err.message);
+      }
+    }
+
+    console.log(`[Daily Scraper] Completed price check. Verified: ${verifiedCount}, Price Updates: ${updatedCount}`);
+    return { total: items.length, updated: updatedCount, verified: verifiedCount };
+  } catch (err) {
+    console.error('[Daily Scraper] Error running daily price check:', err.message);
+    return { error: err.message };
+  }
+}
+
+// Endpoint to trigger manual or scheduled price refresh
+app.all('/api/refresh-prices', async (req, res) => {
+  const result = await runDailyPriceCheck();
+  res.json({ success: true, ...result });
+});
+
+// Schedule daily check (every 24 hours)
+setInterval(runDailyPriceCheck, 24 * 60 * 60 * 1000);
+
 // Start server
 app.listen(port, () => {
   console.log(`Server running at http://localhost:${port}`);
+  // Run initial check shortly after startup
+  setTimeout(runDailyPriceCheck, 5000);
 });
 
