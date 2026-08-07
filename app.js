@@ -316,8 +316,10 @@
     }
 
     // Encode variant, price history, and is_received into existing Supabase columns
-    function toDbFormat(item) {
+    function toDbFormat(item, itemId = null) {
         const copy = { ...item };
+        const idToFind = itemId || copy.id;
+        const existing = idToFind ? items.find(i => i.id === idToFind) : null;
         
         // Convert createdAt to created_at
         if (copy.createdAt) {
@@ -335,26 +337,44 @@
         }
         delete copy.is_received;
 
-        // Build price history metadata payload
-        const phMeta = {
-            orig: copy.original_price || copy.price || '',
-            prev: copy.previous_price || '',
-            hist: Array.isArray(copy.price_history) ? copy.price_history : []
-        };
+        // Check if note or metadata properties are explicitly provided in copy
+        const noteExplicitlyPassed = copy.note !== undefined;
+        const variantExplicitlyPassed = copy.variant !== undefined;
+        const historyExplicitlyPassed = copy.price_history !== undefined;
+        const origPriceExplicitlyPassed = copy.original_price !== undefined;
+        const prevPriceExplicitlyPassed = copy.previous_price !== undefined;
 
-        // Clean existing note from old metadata/variant tags
-        let cleanNote = (copy.note || '')
-            .replace(/^\[[^\]]+\]\s*/, '')
-            .replace(/\s*\[PH:.*?\]\s*/g, '')
-            .trim();
+        const isNoteOrMetaTouched = noteExplicitlyPassed || variantExplicitlyPassed || historyExplicitlyPassed || origPriceExplicitlyPassed || prevPriceExplicitlyPassed || !existing;
 
-        let prefix = '';
-        if (copy.variant) {
-            prefix = `[${copy.variant}] `;
+        if (isNoteOrMetaTouched) {
+            const baseNote = noteExplicitlyPassed ? copy.note : (existing ? existing.note : '');
+            const baseVariant = variantExplicitlyPassed ? copy.variant : (existing ? existing.variant : '');
+            const baseOrig = origPriceExplicitlyPassed ? copy.original_price : (existing ? existing.original_price : (copy.price || (existing ? existing.price : '')));
+            const basePrev = prevPriceExplicitlyPassed ? copy.previous_price : (existing ? existing.previous_price : '');
+            const baseHist = historyExplicitlyPassed ? copy.price_history : (existing ? existing.price_history : []);
+
+            // Clean base note from old metadata/variant tags
+            let cleanNote = (baseNote || '')
+                .replace(/^\[[^\]]+\]\s*/, '')
+                .replace(/\s*\[PH:.*?\]\s*/g, '')
+                .trim();
+
+            let prefix = '';
+            if (baseVariant) {
+                prefix = `[${baseVariant}] `;
+            }
+
+            const phMeta = {
+                orig: baseOrig || '',
+                prev: basePrev || '',
+                hist: Array.isArray(baseHist) ? baseHist : []
+            };
+
+            const phTag = ` [PH:${JSON.stringify(phMeta)}]`;
+            copy.note = `${prefix}${cleanNote}${phTag}`.trim();
+        } else {
+            delete copy.note;
         }
-
-        const phTag = ` [PH:${JSON.stringify(phMeta)}]`;
-        copy.note = `${prefix}${cleanNote}${phTag}`.trim();
 
         delete copy.variant;
         delete copy.original_price;
@@ -391,8 +411,8 @@
         if (phMatch) {
             try {
                 const meta = JSON.parse(phMatch[1]);
-                item.original_price = meta.orig || item.price || '';
-                item.previous_price = meta.prev || '';
+                if (meta.orig) item.original_price = meta.orig;
+                if (meta.prev) item.previous_price = meta.prev;
                 item.price_history = Array.isArray(meta.hist) ? meta.hist : [];
             } catch (e) {}
             item.note = item.note.replace(/\s*\[PH:.*?\]\s*/g, '').trim();
@@ -405,12 +425,34 @@
             item.note = variantMatch[2];
         }
 
-        // Ensure price_history has at least 1 entry if price exists
-        if (item.price && (!item.price_history || item.price_history.length === 0)) {
-            item.price_history = [{ price: item.price, date: item.createdAt || Date.now() }];
-        }
         if (!item.original_price && item.price) {
             item.original_price = item.price;
+        }
+
+        // Ensure price_history has entries
+        if (item.price) {
+            const createdTime = item.createdAt ? (typeof item.createdAt === 'number' ? item.createdAt : new Date(item.createdAt).getTime()) : Date.now();
+
+            if (!item.price_history || item.price_history.length === 0) {
+                if (item.original_price && item.original_price !== item.price) {
+                    item.price_history = [
+                        { price: item.original_price, date: createdTime > 0 ? createdTime - 86400000 : Date.now() - 86400000 },
+                        { price: item.price, date: createdTime > 0 ? createdTime : Date.now() }
+                    ];
+                } else {
+                    item.price_history = [{ price: item.price, date: createdTime > 0 ? createdTime : Date.now() }];
+                }
+            } else {
+                // If original_price exists, differs from current price, and is missing from history, prepend it
+                if (item.original_price && item.original_price !== item.price) {
+                    const hasOrig = item.price_history.some(h => h.price === item.original_price);
+                    if (!hasOrig) {
+                        const earliestDate = item.price_history.reduce((min, h) => Math.min(min, h.date || Infinity), Infinity);
+                        const baseDate = earliestDate !== Infinity ? earliestDate : createdTime;
+                        item.price_history.unshift({ price: item.original_price, date: baseDate - 86400000 });
+                    }
+                }
+            }
         }
 
         return item;
@@ -472,7 +514,7 @@
     }
 
     async function updateItem(id, updates) {
-        const dbUpdates = toDbFormat(updates);
+        const dbUpdates = toDbFormat(updates, id);
 
         try {
             const response = await fetch(`${SUPABASE_URL}/rest/v1/wishlist?id=eq.${id}`, {
@@ -1479,9 +1521,9 @@
             let tagHtml = `<span class="history-tag tag-initial">Initial</span>`;
             if (prevEntry) {
                 if (priceNum < prevNum) {
-                    tagHtml = `<span class="history-tag tag-drop">📉 Drop</span>`;
+                    tagHtml = `<span class="history-tag tag-drop">Drop</span>`;
                 } else if (priceNum > prevNum) {
-                    tagHtml = `<span class="history-tag tag-increase">📈 Increase</span>`;
+                    tagHtml = `<span class="history-tag tag-increase">Increase</span>`;
                 } else {
                     tagHtml = `<span class="history-tag tag-initial">Unchanged</span>`;
                 }
@@ -1672,7 +1714,7 @@
             const origPriceSpan = dropInfo.hasDrop
                 ? `<span class="wish-card-price-orig">${escapeHtml(dropInfo.origFormatted)}</span>`
                 : '';
-            const historyBtn = `<button class="btn-price-history" data-id="${item.id}" title="View Price History">📊</button>`;
+            const historyBtn = `<button class="btn-price-history" data-id="${item.id}" title="View Price History" aria-label="View Price History">History</button>`;
             priceHtml = `
               <div class="wish-card-price-wrapper">
                 ${origPriceSpan}
@@ -1698,7 +1740,7 @@
 
         // Badges: admin never sees reservation info — priority & price drop
         const dropBadge = dropInfo.hasDrop
-            ? `<span class="badge-price-drop">📉 -${dropInfo.diffFormatted} (${dropInfo.percent}%)</span>`
+            ? `<span class="badge-price-drop">-${dropInfo.diffFormatted} (${dropInfo.percent}%)</span>`
             : '';
 
         const badgesHtml = `
@@ -2041,7 +2083,7 @@
     if (refreshPricesBtn) {
         refreshPricesBtn.addEventListener('click', async () => {
             refreshPricesBtn.classList.add('loading');
-            refreshPricesBtn.textContent = '⚡ Checking...';
+            refreshPricesBtn.textContent = 'Checking...';
             showToast('Re-scraping pages for price updates...', false);
 
             try {
@@ -2062,7 +2104,7 @@
                 showToast('Failed to refresh prices', false);
             } finally {
                 refreshPricesBtn.classList.remove('loading');
-                refreshPricesBtn.textContent = '⚡ Refresh Prices';
+                refreshPricesBtn.textContent = 'Refresh Prices';
             }
         });
     }
@@ -2195,11 +2237,14 @@
 
         if (editingItemId) {
             const existing = items.find(i => i.id === editingItemId);
-            let history = existing ? (existing.price_history || []) : [];
+            let history = existing ? [...(existing.price_history || [])] : [];
             const oldPrice = existing ? existing.price : '';
             const origPrice = existing ? (existing.original_price || oldPrice || price) : price;
             
             if (price && price !== oldPrice) {
+                if (history.length === 0 && oldPrice) {
+                    history.push({ price: oldPrice, date: existing.createdAt || Date.now() - 1000 });
+                }
                 history.push({ price, date: Date.now() });
             }
             if (history.length === 0 && price) {
