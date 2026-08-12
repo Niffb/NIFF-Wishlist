@@ -354,10 +354,19 @@
             const baseHist = historyExplicitlyPassed ? copy.price_history : (existing ? existing.price_history : []);
 
             // Clean base note from old metadata/variant tags
-            let cleanNote = (baseNote || '')
-                .replace(/^\[[^\]]+\]\s*/, '')
-                .replace(/\s*\[PH:.*?\]\s*/g, '')
-                .trim();
+            let cleanNote = (baseNote || '').replace(/^\[[^\]]+\]\s*/, '');
+            // Strip [PH:{...}] using balanced-bracket matching
+            const phCleanIdx = cleanNote.indexOf('[PH:');
+            if (phCleanIdx !== -1) {
+                const afterPH = cleanNote.substring(phCleanIdx + 4);
+                let d = 0, ep = -1;
+                for (let i = 0; i < afterPH.length; i++) {
+                    if (afterPH[i] === '{') d++;
+                    else if (afterPH[i] === '}') { d--; if (d === 0 && afterPH[i + 1] === ']') { ep = i + 2; break; } }
+                }
+                if (ep !== -1) cleanNote = (cleanNote.substring(0, phCleanIdx) + cleanNote.substring(phCleanIdx + 4 + ep)).trim();
+            }
+            cleanNote = cleanNote.trim();
 
             let prefix = '';
             if (baseVariant) {
@@ -406,16 +415,38 @@
             price_history: []
         };
 
-        // 1. Unpack [PH:...] price history metadata if present
-        const phMatch = (item.note || '').match(/\[PH:(.*?)\]/);
-        if (phMatch) {
-            try {
-                const meta = JSON.parse(phMatch[1]);
-                if (meta.orig) item.original_price = meta.orig;
-                if (meta.prev) item.previous_price = meta.prev;
-                item.price_history = Array.isArray(meta.hist) ? meta.hist : [];
-            } catch (e) {}
-            item.note = item.note.replace(/\s*\[PH:.*?\]\s*/g, '').trim();
+        // 1. Unpack [PH:{...}] price history metadata if present
+        // Use balanced-bracket matching to handle nested JSON (arrays/objects)
+        const phStart = (item.note || '').indexOf('[PH:');
+        if (phStart !== -1) {
+            // Find the matching closing bracket by counting braces
+            const afterPH = item.note.substring(phStart + 4); // after "[PH:"
+            let depth = 0;
+            let endPos = -1;
+            for (let i = 0; i < afterPH.length; i++) {
+                if (afterPH[i] === '{') depth++;
+                else if (afterPH[i] === '}') {
+                    depth--;
+                    if (depth === 0) {
+                        // Found the closing }, now expect ]
+                        if (i + 1 < afterPH.length && afterPH[i + 1] === ']') {
+                            endPos = i + 2; // include the ]
+                        }
+                        break;
+                    }
+                }
+            }
+            if (endPos !== -1) {
+                const jsonStr = afterPH.substring(0, endPos - 1); // exclude the trailing ]
+                try {
+                    const meta = JSON.parse(jsonStr);
+                    if (meta.orig) item.original_price = meta.orig;
+                    if (meta.prev) item.previous_price = meta.prev;
+                    item.price_history = Array.isArray(meta.hist) ? meta.hist : [];
+                } catch (e) {}
+                // Remove the full [PH:{...}] tag from note
+                item.note = (item.note.substring(0, phStart) + item.note.substring(phStart + 4 + endPos)).trim();
+            }
         }
 
         // 2. Unpack [variant] from note if present
@@ -812,10 +843,13 @@
             }
             // --- ASOS ---
             else if (hostname.includes('asos.com')) {
-                // ASOS: /product-name-slug/prd/12345
-                const prdMatch = path.match(/\/([^/]+)\/prd\//);
+                // ASOS: /product-name-slug/prd/12345678
+                const prdMatch = path.match(/\/([^/]+)\/prd\/(\d+)/);
                 if (prdMatch) {
                     result.name = prdMatch[1].replace(/-/g, ' ');
+                    // ASOS CDN: https://images.asos-media.com/products/slug/ID-1?$n_640w$
+                    const productId = prdMatch[2];
+                    result.image = `https://images.asos-media.com/products/${prdMatch[1]}/${productId}-1?$n_640w$`;
                 } else {
                     const parts = path.split('/').filter(p => p && p.includes('-'));
                     if (parts.length > 0) result.name = parts[0].replace(/-/g, ' ');
@@ -1339,8 +1373,10 @@
             }
 
             if (!bestImage || bestImage.includes('favicon')) {
-                // Use search engine product images — NEVER page screenshots
-                if (imgSearchData?.best) {
+                // Prefer domain-specific CDN images (e.g. ASOS) over search results
+                if (domainData.image && domainData.image.includes('asos-media.com')) {
+                    bestImage = domainData.image;
+                } else if (imgSearchData?.best) {
                     bestImage = imgSearchData.best;
                 } else if (imgSearchData?.images?.length > 0) {
                     bestImage = imgSearchData.images[0];

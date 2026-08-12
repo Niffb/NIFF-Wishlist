@@ -153,6 +153,27 @@ app.get('/api/fetch-page', async (req, res) => {
       }
     }
 
+    // --- ASOS Specific: extract images from JS config or construct CDN URL ---
+    if (targetUrl.includes('asos.com')) {
+      let asosImage = '';
+      // Try to extract from window.asos.pdp.config or inline JSON
+      const asosImgMatch = html.match(/images\.asos-media\.com\/products\/[^"'\s]+/i);
+      if (asosImgMatch) {
+        asosImage = 'https://' + asosImgMatch[0];
+      }
+      // Fallback: construct from URL product ID
+      if (!asosImage) {
+        const prdMatch = targetUrl.match(/\/([^/]+)\/prd\/(\d+)/);
+        if (prdMatch) {
+          asosImage = `https://images.asos-media.com/products/${prdMatch[1]}/${prdMatch[2]}-1?$n_640w$`;
+        }
+      }
+      if (asosImage) {
+        console.log(`[Proxy] ASOS image: ${asosImage.substring(0, 80)}`);
+        html = html.replace('</head>', `<meta property="og:image" content="${asosImage}"></head>`);
+      }
+    }
+
     res.json({ html, finalUrl: response.url, antiBot: false });
   } catch (err) {
     console.error('Fetch page error:', err.message, 'for', targetUrl);
@@ -553,14 +574,31 @@ async function runDailyPriceCheck() {
             let orig = item.price || scrapedPrice;
             let hist = [];
             
-            const phMatch = cleanNote.match(/\[PH:(.*?)\]/);
-            if (phMatch) {
-              try {
-                const meta = JSON.parse(phMatch[1]);
-                orig = meta.orig || item.price || scrapedPrice;
-                hist = Array.isArray(meta.hist) ? meta.hist : [];
-              } catch (e) {}
-              cleanNote = cleanNote.replace(/\s*\[PH:.*?\]\s*/g, '').trim();
+            // Use balanced-bracket matching for nested JSON
+            const phIdx = cleanNote.indexOf('[PH:');
+            if (phIdx !== -1) {
+              const afterPH = cleanNote.substring(phIdx + 4);
+              let depth = 0;
+              let endPos = -1;
+              for (let i = 0; i < afterPH.length; i++) {
+                if (afterPH[i] === '{') depth++;
+                else if (afterPH[i] === '}') {
+                  depth--;
+                  if (depth === 0 && i + 1 < afterPH.length && afterPH[i + 1] === ']') {
+                    endPos = i + 2;
+                    break;
+                  }
+                }
+              }
+              if (endPos !== -1) {
+                const jsonStr = afterPH.substring(0, endPos - 1);
+                try {
+                  const meta = JSON.parse(jsonStr);
+                  orig = meta.orig || item.price || scrapedPrice;
+                  hist = Array.isArray(meta.hist) ? meta.hist : [];
+                } catch (e) {}
+                cleanNote = (cleanNote.substring(0, phIdx) + cleanNote.substring(phIdx + 4 + endPos)).trim();
+              }
             }
 
             if (hist.length === 0 && item.price) {
