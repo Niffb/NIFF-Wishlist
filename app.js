@@ -2469,25 +2469,80 @@
         });
     }
 
+    // Check if an image URL actually loads successfully
+    function validateImageUrl(url) {
+        return new Promise((resolve) => {
+            if (!url) { resolve(false); return; }
+            const img = new Image();
+            img.onload = () => resolve(img.naturalWidth > 1 && img.naturalHeight > 1);
+            img.onerror = () => resolve(false);
+            img.src = url;
+            // Timeout after 5s
+            setTimeout(() => resolve(false), 5000);
+        });
+    }
+
     async function autoRepairMissingImages() {
+        const itemsToRepair = [];
+
+        // First pass: identify items with missing or potentially broken images
         for (const item of items) {
-            if (!item.image && item.name && item.url) {
-                try {
-                    const res = await fetch(`/api/search-image?q=${encodeURIComponent(item.name)}&url=${encodeURIComponent(item.url)}`, { signal: AbortSignal.timeout(4000) });
-                    if (res.ok) {
-                        const json = await res.json();
-                        const best = json.best || (json.images && json.images[0]);
-                        if (best) {
-                            console.log(`[AutoRepair] Recovered missing image for "${item.name}":`, best);
-                            item.image = best;
-                            await updateItem(item.id, { image: best });
-                            render();
-                        }
-                    }
-                } catch (e) {
-                    console.warn(`[AutoRepair] Failed for "${item.name}":`, e.message);
+            if (!item.name || !item.url) continue;
+
+            if (!item.image) {
+                // No image at all
+                itemsToRepair.push(item);
+            } else {
+                // Has an image URL — validate it actually loads
+                const isValid = await validateImageUrl(item.image);
+                if (!isValid) {
+                    console.log(`[AutoRepair] Broken image detected for "${item.name}": ${item.image.substring(0, 60)}`);
+                    itemsToRepair.push(item);
                 }
             }
+        }
+
+        if (itemsToRepair.length === 0) {
+            console.log('[AutoRepair] All item images are valid');
+            return;
+        }
+
+        console.log(`[AutoRepair] Attempting to recover images for ${itemsToRepair.length} item(s)`);
+        let repaired = 0;
+
+        for (const item of itemsToRepair) {
+            try {
+                const res = await fetch(`/api/search-image?q=${encodeURIComponent(item.name)}&url=${encodeURIComponent(item.url)}`, { signal: AbortSignal.timeout(6000) });
+                if (res.ok) {
+                    const json = await res.json();
+                    const candidates = json.images || [];
+                    if (json.best) candidates.unshift(json.best);
+
+                    // Try each candidate until one actually loads
+                    let foundImage = '';
+                    for (const candidate of candidates.slice(0, 5)) {
+                        const valid = await validateImageUrl(candidate);
+                        if (valid) {
+                            foundImage = candidate;
+                            break;
+                        }
+                    }
+
+                    if (foundImage) {
+                        console.log(`[AutoRepair] Recovered image for "${item.name}": ${foundImage.substring(0, 60)}`);
+                        item.image = foundImage;
+                        await updateItem(item.id, { image: foundImage });
+                        repaired++;
+                    }
+                }
+            } catch (e) {
+                console.warn(`[AutoRepair] Failed for "${item.name}":`, e.message);
+            }
+        }
+
+        if (repaired > 0) {
+            console.log(`[AutoRepair] Repaired ${repaired} image(s)`);
+            render();
         }
     }
 
@@ -2500,8 +2555,8 @@
             updateAuthUI();
         }
 
-        // Auto-recover missing images for existing items in background
-        autoRepairMissingImages();
+        // Auto-recover missing/broken images in background (slight delay to not block UI)
+        setTimeout(() => autoRepairMissingImages(), 2000);
 
         startSupabaseKeepalive();
         // Auto-sync items every 10 seconds for real-time multi-device updates
