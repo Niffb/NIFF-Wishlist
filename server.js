@@ -467,10 +467,10 @@ app.get('/api/search-product', async (req, res) => {
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://teqefehtuesydtwimwqq.supabase.co';
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRlcWVmZWh0dWVzeWR0d2ltd3FxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUzNDY2MTMsImV4cCI6MjEwMDkyMjYxM30.JyAVIxqougf8pTfU3RQg2fMx3xgV7qP4V2FGnymDNW0';
 
-function extractPriceFromHtml(html) {
+function extractPriceFromHtml(html, strictMode = false) {
   if (!html) return '';
 
-  // 1. JSON-LD search for price
+  // 1. JSON-LD search for price (high confidence)
   const jsonLdMatches = [...html.matchAll(/<script[^>]+type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi)];
   for (const m of jsonLdMatches) {
     try {
@@ -497,7 +497,7 @@ function extractPriceFromHtml(html) {
     } catch (e) {}
   }
 
-  // 2. Meta tag search for price
+  // 2. Meta tag search for price (high confidence)
   const metaPrice = html.match(/meta[^>]+property=["'](?:product|og):price:amount["'][^>]+content=["']([^"']+)["']/i) ||
                     html.match(/meta[^>]+content=["']([^"']+)["'][^>]+property=["'](?:product|og):price:amount["']/i);
   if (metaPrice && metaPrice[1]) {
@@ -505,11 +505,14 @@ function extractPriceFromHtml(html) {
     if (!isNaN(num)) return `£${num.toFixed(2)}`;
   }
 
-  // 3. Fallback regex search
-  const priceMatches = html.match(/£\s?[\d,]+(?:\.\d{2})?/g);
-  if (priceMatches && priceMatches.length > 0) {
-    const cleanNum = parseFloat(priceMatches[0].replace(/[^\d.]/g, ''));
-    if (!isNaN(cleanNum)) return `£${cleanNum.toFixed(2)}`;
+  // 3. Fallback regex search — ONLY used for manual fetch, NOT for daily auto-scraper
+  //    The regex grabs any £XX.XX on the page which could be shipping, related products, etc.
+  if (!strictMode) {
+    const priceMatches = html.match(/£\s?[\d,]+(?:\.\d{2})?/g);
+    if (priceMatches && priceMatches.length > 0) {
+      const cleanNum = parseFloat(priceMatches[0].replace(/[^\d.]/g, ''));
+      if (!isNaN(cleanNum)) return `£${cleanNum.toFixed(2)}`;
+    }
   }
 
   return '';
@@ -561,7 +564,7 @@ async function runDailyPriceCheck() {
 
         if (pageRes.ok) {
           const html = await pageRes.text();
-          const scrapedPrice = extractPriceFromHtml(html);
+          const scrapedPrice = extractPriceFromHtml(html, true);
 
           const updates = {
             last_verified: now
@@ -640,13 +643,11 @@ app.all('/api/refresh-prices', async (req, res) => {
   res.json({ success: true, ...result });
 });
 
-// Schedule daily check (every 24 hours)
+// Schedule daily check (every 24 hours) — does NOT run on startup to avoid overwriting correct prices
 setInterval(runDailyPriceCheck, 24 * 60 * 60 * 1000);
 
 // Start server
 app.listen(port, () => {
   console.log(`Server running at http://localhost:${port}`);
-  // Run initial check shortly after startup
-  setTimeout(runDailyPriceCheck, 5000);
 });
 
