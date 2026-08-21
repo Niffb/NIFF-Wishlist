@@ -292,6 +292,15 @@
     let currentSearch = '';
     let currentPriceFilter = 'all';
     let editingItemId = null;
+    let guestName = localStorage.getItem('wishlist_guest_name') || '';
+    let pendingClaimItemId = null;
+
+    // --- Guest Name Modal DOM ---
+    const guestNameOverlay = document.getElementById('guestNameOverlay');
+    const guestNameModal = document.getElementById('guestNameModal');
+    const guestNameForm = document.getElementById('guestNameForm');
+    const guestNameInput = document.getElementById('guestNameInput');
+    const guestNameClose = document.getElementById('guestNameClose');
 
     const sortSelect = document.getElementById('sortSelect');
     const formSubmitBtn = document.getElementById('formSubmitBtn');
@@ -630,7 +639,35 @@
         'error 503',
         'page not found',
         '404 not found',
-        'sorry, you have been blocked'
+        'sorry, you have been blocked',
+        // Amazon/retail-specific junk titles
+        'product gallery',
+        'image gallery',
+        'photo gallery',
+        'buy online',
+        'best price',
+        'add to cart',
+        'add to basket',
+        'add to bag',
+        'sign in to continue',
+        'log in to continue',
+        'create an account',
+        'verify your identity',
+        'something went wrong',
+        'temporarily unavailable',
+        'item not available',
+        'currently unavailable',
+        'out of stock',
+        'no longer available',
+        'we can\'t find',
+        'oops',
+        'hmm, we couldn',
+        'this page isn',
+        'we couldn\'t find',
+        'content not found',
+        'subscribe & save',
+        'amazon.co.uk',
+        'amazon.com',
     ];
 
     // Brand-only titles that indicate the scraper only got the site name, not the product
@@ -654,6 +691,37 @@
         if (lower.length < 2) return true;
         if (BRAND_ONLY_TITLES.has(lower)) return true;
         return JUNK_TITLE_PATTERNS.some(p => lower.includes(p));
+    }
+
+    // --- Junk Image URL Filter ---
+    // Filters tracking pixels, analytics beacons, non-product image URLs
+    function isJunkImageUrl(imgUrl) {
+        if (!imgUrl || typeof imgUrl !== 'string') return true;
+        if (imgUrl.length < 15) return true;
+        const lower = imgUrl.toLowerCase();
+        const junkPatterns = [
+            // Tracking pixels & analytics
+            'fls-eu.amazon', 'fls-na.amazon', 'fls.doubleclick',
+            '/1/batch/', '/pixel', '/beacon', '/track', '/analytics',
+            '1x1', 'spacer.gif', 'blank.gif', 'transparent.gif',
+            'clear.gif', 'pixel.gif', 'pixel.png',
+            // Generic non-product
+            'favicon', 'logo', '/icon', 'sprite', 'badge',
+            'avatar', 'profile', 'banner', 'ad_', '/ads/',
+            '/brand-logo', 'site-logo', 'header-logo',
+            // Analytics / marketing platforms
+            'googleadservices', 'doubleclick.net', 'facebook.com/tr',
+            'bat.bing.com', 'analytics.', 'tag.', 'tags.',
+            'pixel.', 'collect.', 'log.', 'stat.',
+            'microsoft.com', 'gstatic.com/images/branding',
+            'google.com/images',
+            // Amazon-specific non-product URLs
+            '/images/G/', '/images/S/', 'captcha',
+            'amazon.com/gp/r.html', 'amazon.co.uk/gp/r.html',
+            // Data URIs
+            'data:image',
+        ];
+        return junkPatterns.some(p => lower.includes(p));
     }
 
     // --- Clean Title Helper ---
@@ -1329,8 +1397,8 @@
             // PARALLEL EXECUTION: Fire Page Fetch, Image Search, and Price Search simultaneously!
             const [pageResult, imageResult, priceResult] = await Promise.allSettled([
                 fetchProductData(url),
-                fetch(`/api/search-image?q=${encodeURIComponent(searchName)}&url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(3000) }).then(r => r.ok ? r.json() : null),
-                fetch(`/api/search-product?q=${encodeURIComponent(searchName)}&url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(3000) }).then(r => r.ok ? r.json() : null)
+                fetch(`/api/search-image?q=${encodeURIComponent(searchName)}&url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(6000) }).then(r => r.ok ? r.json() : null),
+                fetch(`/api/search-product?q=${encodeURIComponent(searchName)}&url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(6000) }).then(r => r.ok ? r.json() : null)
             ]);
 
             const fetchResult = pageResult.status === 'fulfilled' ? pageResult.value : null;
@@ -1357,35 +1425,40 @@
             };
 
             let bestImage = '';
-            if (data && !isJunk) {
+
+            // Try scraped data first (but filter out junk images)
+            if (data) {
                 const candidates = [
                     data.image,
                     domainData.image,
                     ...(Array.isArray(data.images) ? data.images : []),
-                    data.logo,
                 ].map(normalizeUrl).filter(img => 
-                    img && img.length > 10 && 
-                    !img.includes('favicon') && 
-                    !img.includes('logo') &&
-                    !img.includes('/icons/')
+                    img && img.length > 10 && !isJunkImageUrl(img)
                 );
                 bestImage = candidates[0] || '';
             }
 
-            if (!bestImage || bestImage.includes('favicon')) {
-                // Prefer domain-specific CDN images (e.g. ASOS) over search results
-                if (domainData.image && domainData.image.includes('asos-media.com')) {
-                    bestImage = domainData.image;
-                } else if (imgSearchData?.best) {
+            // If no good image from scrape, try domain-specific CDN URLs
+            if (!bestImage && domainData.image && !isJunkImageUrl(domainData.image)) {
+                bestImage = domainData.image;
+            }
+
+            // If still no image, use search results (most reliable for blocked sites)
+            if (!bestImage || isJunkImageUrl(bestImage)) {
+                if (imgSearchData?.best && !isJunkImageUrl(imgSearchData.best)) {
                     bestImage = imgSearchData.best;
                 } else if (imgSearchData?.images?.length > 0) {
-                    bestImage = imgSearchData.images[0];
-                } else if (domainData.image) {
-                    bestImage = domainData.image;
+                    // Try each search result until we find a non-junk one
+                    for (const candidate of imgSearchData.images) {
+                        if (!isJunkImageUrl(candidate)) {
+                            bestImage = candidate;
+                            break;
+                        }
+                    }
                 }
-                // No fallback to thum.io — a missing image is better than a page screenshot
             }
-            imageInput.value = bestImage;
+
+            imageInput.value = bestImage || '';
 
             // 3. Resolve Best Price
             let detectedPrice = '';
@@ -1593,7 +1666,7 @@
     }
 
     function getPlaceholderIcon(category) {
-        return '✦';
+        return '';
     }
 
     function render() {
@@ -1779,6 +1852,15 @@
             ? `<span class="badge-price-drop">-${dropInfo.diffFormatted} (${dropInfo.percent}%)</span>`
             : '';
 
+        // Claimed overlay badge — only visible to guests, not admin
+        const isClaimedByMe = item.reserved_by && guestName && item.reserved_by.toLowerCase() === guestName.toLowerCase();
+        const claimedBadgeHtml = (!currentUser && item.reserved_by)
+            ? `<div class="badge-claimed-overlay">
+                 <span class="badge-claimed-icon">✓</span>
+                 <span class="badge-claimed-label">${isClaimedByMe ? 'You\'re getting this' : 'Someone is getting this'}</span>
+               </div>`
+            : '';
+
         const badgesHtml = `
           <div class="item-badges">
             ${item.is_priority ? '<span class="badge-priority">Priority</span>' : ''}
@@ -1786,51 +1868,80 @@
           </div>
         `;
 
-        // Action buttons differ by role
-        let actionsHtml = '';
+        // Action buttons for admin only (compact row)
+        let adminActionsHtml = '';
         if (currentUser) {
-            // Admin: copy, mark received/unarchive, edit, delete
-            actionsHtml = `
-              <button class="btn-copy btn-icon" data-url="${escapeHtml(item.url)}" aria-label="Copy Link" title="Copy Link" style="font-size: 14px;">🔗</button>
-              <button class="${item.is_received ? 'btn-unarchive' : 'btn-received'}" data-id="${item.id}" aria-label="${item.is_received ? 'Move back to wishlist' : 'Mark as received'}" title="${item.is_received ? 'Move back to wishlist' : 'Mark as received'}">${item.is_received ? '↩' : '✓'}</button>
-              <button class="btn-edit" data-id="${item.id}" aria-label="Edit item">✎</button>
-              <button class="btn-delete" data-id="${item.id}" aria-label="Delete item">&times;</button>
-            `;
-        } else {
-            // Guest: copy link + Claim / Claimed button
-            actionsHtml = `
-              <button class="btn-copy btn-icon" data-url="${escapeHtml(item.url)}" aria-label="Copy Link" title="Copy Link" style="font-size: 14px;">🔗</button>
-              ${item.reserved_by
-                ? `<span class="btn-claimed">Claimed</span>`
-                : `<button class="btn-claim" data-id="${item.id}">Claim</button>`
-              }
+            adminActionsHtml = `
+              <div class="item-actions">
+                <button class="btn-copy btn-icon" data-url="${escapeHtml(item.url)}" aria-label="Copy Link" title="Copy Link">Link</button>
+                <button class="${item.is_received ? 'btn-unarchive' : 'btn-received'}" data-id="${item.id}" aria-label="${item.is_received ? 'Move back to wishlist' : 'Mark as received'}" title="${item.is_received ? 'Move back to wishlist' : 'Mark as received'}">${item.is_received ? '↩' : '✓'}</button>
+                <button class="btn-edit" data-id="${item.id}" aria-label="Edit item">✎</button>
+                <button class="btn-delete" data-id="${item.id}" aria-label="Delete item">&times;</button>
+              </div>
             `;
         }
 
+        // Guest claim CTA — full-width, prominent
+        let guestClaimHtml = '';
+        if (!currentUser) {
+            if (item.reserved_by) {
+                if (isClaimedByMe) {
+                    guestClaimHtml = `
+                      <div class="claim-cta claim-cta-yours">
+                        <span class="claim-cta-label">✓ You're getting this</span>
+                        <button class="btn-unclaim" data-id="${item.id}">Unclaim</button>
+                      </div>
+                    `;
+                } else {
+                    guestClaimHtml = `
+                      <div class="claim-cta claim-cta-taken">
+                        <span class="claim-cta-label">Someone is getting this</span>
+                      </div>
+                    `;
+                }
+            } else {
+                guestClaimHtml = `
+                  <button class="btn-claim-big" data-id="${item.id}">
+                    <span class="claim-big-text">I'll Get This</span>
+                  </button>
+                `;
+            }
+        }
+
+        // Price badge on image
+        const priceBadgeHtml = item.price
+            ? `<div class="price-badge">
+                 ${dropInfo.hasDrop ? `<span class="price-badge-orig">${escapeHtml(dropInfo.origFormatted)}</span>` : ''}
+                 <span class="price-badge-current">${escapeHtml(item.price)}</span>
+                 <button class="btn-price-history" data-id="${item.id}" title="View Price History" aria-label="View Price History">↗</button>
+               </div>`
+            : '';
+
+        // Variant / note line (combine into one subtle line)
+        const detailParts = [];
+        if (item.variant) detailParts.push(escapeHtml(item.variant));
+        if (item.note) detailParts.push(escapeHtml(item.note));
+        const detailHtml = detailParts.length > 0
+            ? `<p class="wish-card-detail">${detailParts.join(' · ')}</p>`
+            : '';
+
         card.innerHTML = `
-          <div class="wish-card-image-container">
+          <div class="wish-card-image-container ${!currentUser && item.reserved_by ? 'is-claimed' : ''}">
             ${imageHtml}
+            ${claimedBadgeHtml}
             ${badgesHtml}
+            ${priceBadgeHtml}
             <div class="wish-card-placeholder">${placeholderIcon}</div>
           </div>
           <div class="wish-card-body">
             <h3 class="wish-card-name">${escapeHtml(item.name)}</h3>
-            <div class="wish-card-meta">
-              <span class="wish-card-category">${CATEGORY_LABELS[item.category] || item.category}</span>
-              ${subcatHtml}
-              ${variantHtml}
-            </div>
-            ${noteHtml}
-            <div class="wish-card-footer">
-              ${priceHtml}
-              <a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer" class="wish-card-url" onclick="event.stopPropagation()">
-                ${displayUrl(item.url)}
-              </a>
-            </div>
+            ${detailHtml}
+            <a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer" class="wish-card-url" onclick="event.stopPropagation()">
+              ${displayUrl(item.url)}
+            </a>
           </div>
-          <div class="item-actions">
-            ${actionsHtml}
-          </div>
+          ${guestClaimHtml}
+          ${adminActionsHtml}
         `;
 
         card.addEventListener('click', async (e) => {
@@ -1853,19 +1964,37 @@
                 return;
             }
             
-            // --- "I'm getting this" claim button ---
-            if (e.target.closest('.btn-claim')) {
-                const name = prompt("Enter your name to claim this gift:");
-                if (name && name.trim()) {
-                    try {
-                        const id = e.target.closest('.btn-claim').dataset.id;
-                        await updateItem(id, { reserved_by: name.trim() });
-                        items = await loadItems();
-                        render();
-                        showClaimConfirmation(item.name, name.trim());
-                    } catch(err) {
-                        alert("Failed to claim item.");
-                    }
+            // --- "I'm getting this" claim button (one-click, uses stored guest name) ---
+            const claimBtn = e.target.closest('.btn-claim-big') || e.target.closest('.btn-claim');
+            if (claimBtn) {
+                const id = claimBtn.dataset.id;
+                let claimName = guestName;
+                if (!claimName || !claimName.trim()) {
+                    pendingClaimItemId = id;
+                    openGuestNameModal();
+                    return;
+                }
+                try {
+                    await updateItem(id, { reserved_by: claimName.trim() });
+                    items = await loadItems();
+                    render();
+                    showClaimConfirmation(item.name, claimName.trim());
+                } catch(err) {
+                    alert("Failed to claim item.");
+                }
+                return;
+            }
+            
+            // --- Unclaim button (guest unclaiming their own item) ---
+            if (e.target.closest('.btn-unclaim')) {
+                const id = e.target.closest('.btn-unclaim').dataset.id;
+                try {
+                    await updateItem(id, { reserved_by: null });
+                    items = await loadItems();
+                    render();
+                    showToast('Gift unclaimed', false);
+                } catch(err) {
+                    alert('Failed to unclaim item.');
                 }
                 return;
             }
@@ -2161,8 +2290,9 @@
 
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
-            if (modalOverlay.classList.contains('open')) closeModal();
-            if (authModalOverlay.classList.contains('open')) closeAuthModal();
+            if (modalOverlay && modalOverlay.classList.contains('open')) closeModal();
+            if (authModalOverlay && authModalOverlay.classList.contains('open')) closeAuthModal();
+            if (guestNameOverlay && guestNameOverlay.classList.contains('open')) closeGuestNameModal();
         }
     });
 
@@ -2464,7 +2594,7 @@
                 showToast('Image search failed', false);
             } finally {
                 findImgBtn.disabled = false;
-                findImgBtn.textContent = '🔍 Find';
+                findImgBtn.textContent = 'Find';
             }
         });
     }
@@ -2546,6 +2676,66 @@
         }
     }
 
+    // --- Guest Name Modal Logic ---
+    function openGuestNameModal() {
+        if (!guestNameOverlay) return;
+        guestNameOverlay.classList.add('open');
+        document.body.style.overflow = 'hidden';
+        setTimeout(() => guestNameInput && guestNameInput.focus(), 350);
+    }
+
+    function closeGuestNameModal() {
+        if (!guestNameOverlay) return;
+        guestNameOverlay.classList.remove('open');
+        document.body.style.overflow = '';
+        pendingClaimItemId = null;
+    }
+
+    if (guestNameClose) {
+        guestNameClose.addEventListener('click', closeGuestNameModal);
+    }
+
+    if (guestNameForm) {
+        guestNameForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const name = guestNameInput.value.trim();
+            if (name) {
+                guestName = name;
+                localStorage.setItem('wishlist_guest_name', guestName);
+                
+                const idToClaim = pendingClaimItemId;
+                closeGuestNameModal();
+                showToast(`Welcome, ${guestName}!`, false);
+
+                if (idToClaim) {
+                    const itemToClaim = items.find(i => i.id === idToClaim);
+                    try {
+                        await updateItem(idToClaim, { reserved_by: guestName });
+                        items = await loadItems();
+                        render();
+                        if (itemToClaim) {
+                            showClaimConfirmation(itemToClaim.name, guestName);
+                        }
+                    } catch (err) {
+                        items = await loadItems();
+                        render();
+                        alert('Failed to claim item.');
+                    }
+                } else {
+                    render();
+                }
+            }
+        });
+    }
+
+    if (guestNameOverlay) {
+        guestNameOverlay.addEventListener('click', (e) => {
+            if (e.target === guestNameOverlay) {
+                closeGuestNameModal();
+            }
+        });
+    }
+
     async function init() {
         items = await loadItems();
         render();
@@ -2553,6 +2743,11 @@
         if (localStorage.getItem('wishlist_admin_session') === 'true') {
             currentUser = { email: 'Admin', id: 'admin' };
             updateAuthUI();
+        }
+
+        // Show guest name modal if visitor hasn't entered their name yet (and not admin)
+        if (!currentUser && !guestName) {
+            setTimeout(() => openGuestNameModal(), 600);
         }
 
         // Auto-recover missing/broken images in background (slight delay to not block UI)

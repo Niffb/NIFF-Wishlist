@@ -72,7 +72,7 @@
   <div class="filters-bar">
     <div class="filters-inner">
       <div class="search-wrapper">
-        <span class="search-icon">🔍</span>
+        <span class="search-icon">⌕</span>
         <input type="text" id="searchInput" class="search-input" placeholder="Search wishlist...">
       </div>
       <div class="price-filter-wrapper">
@@ -91,7 +91,7 @@
   <main class="content">
     <!-- Empty State -->
     <div class="empty-state" id="emptyState">
-      <div class="empty-icon">✦</div>
+      <div class="empty-icon">—</div>
       <p class="empty-hint" id="emptyHint">No items available in this view</p>
     </div>
 
@@ -171,7 +171,7 @@
           <label for="itemImage">Image URL <span class="optional">(auto-filled)</span></label>
           <div class="url-input-row">
             <input type="url" id="itemImage" placeholder="https://...">
-            <button type="button" class="btn-fetch" id="findImgBtn" style="min-width: 90px;" title="Find product image">🔍 Find</button>
+            <button type="button" class="btn-fetch" id="findImgBtn" style="min-width: 90px;" title="Find product image">Find</button>
           </div>
         </div>
         <div class="form-group">
@@ -241,6 +241,26 @@
         <button type="submit" class="btn-submit" id="authSubmitBtn">Login</button>
       </form>
       <div id="authMessage" class="auth-message"></div>
+    </div>
+  </div>
+
+  <!-- Guest Name Modal -->
+  <div class="modal-overlay" id="guestNameOverlay">
+    <div class="modal guest-name-modal" id="guestNameModal">
+      <div style="display: flex; justify-content: flex-end; padding: 0.75rem 0.75rem 0;">
+        <button class="modal-close" id="guestNameClose" aria-label="Close">&times;</button>
+      </div>
+      <div class="guest-name-hero" style="padding-top: 0.25rem;">
+        <h2 class="guest-name-title">Welcome</h2>
+        <p class="guest-name-subtitle">Enter your name so we know who's claiming gifts</p>
+      </div>
+      <form id="guestNameForm">
+        <div class="form-group">
+          <label for="guestNameInput">Your Name</label>
+          <input type="text" id="guestNameInput" placeholder="e.g. Mum, Dad, Sarah..." required autocomplete="name" autocapitalize="words">
+        </div>
+        <button type="submit" class="btn-submit" id="guestNameSubmitBtn">Continue</button>
+      </form>
     </div>
   </div>
 
